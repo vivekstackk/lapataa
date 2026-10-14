@@ -1,36 +1,112 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Lapata — लापता
+
+Your music. Your people. Your memories.
+
+A cinematic music-sharing platform — discover, collect, and share albums with friends. Built with Next.js, Tailwind CSS, and a warm editorial aesthetic.
+
+![Next.js](https://img.shields.io/badge/Next.js-16.4-black)
+![React](https://img.shields.io/badge/React-19-61DAFB)
+![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6)
+
+## Features
+
+- **Welcome / landing** — textured hero with album artwork, peeking vinyl disc (spin animation), glossy playback pill (play/pause images), artist/title display, Spotify link, and macOS-style dock with magnification + tooltips
+- **Discover** — trending albums, browse by mood, popular tracks
+- **My Music** — saved albums, recently played, library stats
+- **Music Inbox** — songs shared by friends with notes
+- **Friends** — online presence, suggested friends
+- **Messages / Notifications / Playlists / Diary / Settings** — app shell pages with mock data
+- **Auth shells** — login and registration pages (branded)
+- **Responsive** — mobile header, bottom navigation, dock scrolling
+
+## Tech Stack
+
+- **Framework:** Next.js 16 (App Router, Turbopack, `cacheComponents`, `partialPrefetching`, `reactCompiler`)
+- **Language:** TypeScript (strict)
+- **Styling:** Tailwind CSS v4 + custom CSS in `src/app/globals.css`
+- **Fonts:** `next/font/google` — Inter, Playfair Display, Noto Sans Devanagari, Pacifico
+- **Brand tooling:** Python (`fontTools`) script `scripts/brand/build_logo.py` generates the Devanagari wordmark
+
+## Project Structure
+
+```
+src/
+  app/
+    page.tsx              # welcome / hero page
+    layout.tsx            # root layout + fonts
+    icon.svg              # app icon (from brand script)
+    login/  register/     # auth pages
+    (app)/                # authenticated shell: home, discover, inbox, friends, etc.
+  components/
+    album-dock.tsx        # dock with magnification
+    mobile-nav.tsx        # bottom nav (mobile)
+    sidebar.tsx           # sidebar (desktop)
+    icons.tsx             # SVG icons
+    brand/lapata-wordmark.tsx
+  data/music.ts           # album / track mock data
+public/
+  assets/                 # bg-image, glossy control pills
+  brand/                  # logo SVGs, brush logo, vinyl disc
+scripts/brand/            # logo-generation tooling
+```
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 20+
+- npm
+
+### Install & run
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# open http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Other commands
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run build    # production build
+npm run start    # serve production build
+npm run lint     # eslint (next + typescript)
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment Variables
 
-## Learn More
+No secrets are required to run the app locally — all current pages use mock data.
 
-To learn more about Next.js, take a look at the following resources:
+For future integrations, copy the example file:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+cp .env.example .env.local
+# edit .env.local
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`.env*` files (except `.env.example`) are gitignored.
 
-## Deploy on Vercel
+## Assets & Branding
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Hero texture: `public/assets/bg-image.png` (used via `url('/assets/bg-image.png')` in `globals.css`)
+- Vinyl: `public/brand/diskk.png`
+- Controls: `public/assets/Glossy Minimal Media Control Pill(1).png` and `Glossy Pause Media Control Bar.png`
+- Logos: `public/brand/lapata-*.svg` and `lapata-brush-logo.png`
+- Regenerate the wordmark: `python scripts/brand/build_logo.py` (requires `fontTools` and fetched fonts)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+> Do not replace PNG artwork with CSS recreations unless intentionally redesigning.
+
+## Deployment
+
+Standard Next.js deployment — e.g. Vercel:
+
+```bash
+npm run build
+```
+
+See [Next.js deployment docs](https://nextjs.org/docs/app/building-your-application/deploying).
+
+## License
+
+Private. All rights reserved.

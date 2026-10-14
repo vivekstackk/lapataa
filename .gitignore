@@ -31,7 +31,12 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
-.env*
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
 
 # vercel
 .vercel
@@ -39,3 +44,25 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local tooling & editor
+.kilo/
+.tmp-shot/
+.design-backup/
+.shot-*.png
+.fonts*.png
+.fonts-preview.html
+.dom.txt
+.start.log
+*.tsbuildinfo
+
+# python (brand tooling)
+__pycache__/
+*.py[cod]
+.venv/
+scripts/brand/__pycache__/
+scripts/brand/board.*
+scripts/brand/inspect.*
+
+# OS
+Thumbs.db

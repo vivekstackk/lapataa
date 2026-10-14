@@ -1,69 +1,138 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useState } from 'react'
+import Link from 'next/link'
+import { featuredAlbums } from '@/data/music'
+import AlbumDock from '@/components/album-dock'
+
+function SpotifyIcon({ className = 'w-4 h-4' }: { className?: string }) {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.12-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.48.66.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
+    </svg>
+  )
+}
+
+export default function HomePage() {
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const activeAlbum = featuredAlbums[activeIndex] ?? null
+
+  return (
+    <main className="welcome">
+      {/* Top-right auth actions */}
+      <div className="welcome-auth">
+        <Link href="/login" className="welcome-auth-link">Log in</Link>
+        <Link href="/register" className="welcome-auth-btn">Create your music space</Link>
+      </div>
+
+      {/* Brand Logo */}
+      <div className="welcome-brand">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/brand/lapata-brush-logo.png"
+          alt="लापता — Lapata"
+          className="welcome-logo"
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+      </div>
+
+      {/* Central Player Stage */}
+      <div className="welcome-player-center">
+        {/* Spotify-style link */}
+        <a
+          className="welcome-spotify-link"
+          href="https://spotify.com"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <SpotifyIcon /> Open in Spotify
+        </a>
+
+        {/* Main Stage: artwork + disc */}
+        <div className="welcome-stage">
+          <div className="welcome-artwork">
+            {activeAlbum && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={activeAlbum.image}
+                alt={`${activeAlbum.title} by ${activeAlbum.artist}`}
+              />
+            )}
+          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            className={`welcome-disc${isPlaying ? ' is-playing' : ''}`}
+            src="/brand/diskk.png"
+            alt=""
+            aria-hidden="true"
+          />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+
+        {/* Track Info */}
+        <div className="welcome-info">
+          <span className="welcome-artist">{activeAlbum?.artist ?? 'Lapata'}</span>
+          <span className="welcome-title">{activeAlbum?.title ?? 'Featured Album'}</span>
+        </div>
+
+        {/* Player Controls — Original PNG artwork with transparent hit areas */}
+        <div className="welcome-controls-wrap">
+          <div className="welcome-controls-pill" role="group" aria-label="Music player controls">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/assets/Glossy Minimal Media Control Pill(1).png"
+              alt="Music player controls (Play)"
+              className="music-control-artwork"
+              draggable={false}
+              style={{ display: isPlaying ? 'none' : 'block' }}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/assets/Glossy Pause Media Control Bar.png"
+              alt="Music player controls (Pause)"
+              className="music-control-artwork"
+              draggable={false}
+              style={{ display: isPlaying ? 'block' : 'none' }}
+            />
+            <button
+              className="pill-zone pill-zone--prev"
+              aria-label="Previous track"
+              type="button"
+              onClick={() => {
+                setActiveIndex((p) => (p - 1 + featuredAlbums.length) % featuredAlbums.length)
+                setIsPlaying(true)
+              }}
+            />
+            <button
+              className="pill-zone pill-zone--play"
+              aria-label={isPlaying ? 'Pause' : 'Play'}
+              aria-pressed={isPlaying}
+              type="button"
+              onClick={() => setIsPlaying((v) => !v)}
+            />
+            <button
+              className="pill-zone pill-zone--next"
+              aria-label="Next track"
+              type="button"
+              onClick={() => {
+                setActiveIndex((p) => (p + 1) % featuredAlbums.length)
+                setIsPlaying(true)
+              }}
+            />
+          </div>
         </div>
-      </main>
-    </div>
-  );
+      </div>
+
+      {/* Album Dock with macOS magnification effect */}
+      <AlbumDock
+        albums={featuredAlbums}
+        activeIndex={activeIndex}
+        onSelect={setActiveIndex}
+      />
+
+      {/* Footer */}
+      <footer className="welcome-footer">
+        © 2026 Lapata · लापता
+      </footer>
+    </main>
+  )
 }
