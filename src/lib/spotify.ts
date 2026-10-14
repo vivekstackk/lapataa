@@ -237,49 +237,45 @@ export async function getChartTracks(): Promise<ChartResult> {
     }
   }
 
-  // Attempt 2: browse/new-releases — always available via Client Credentials.
-  // Not a chart, labelled honestly as browse:new-releases.
+  // Attempt 2: search-based real tracks — browse/new-releases and featured-playlists
+  // are currently 403 for this app, but /search IS allowed on Client Credentials.
+  // Use a curated search to get real Spotify tracks honestly labelled as search fallback.
   try {
-    const data = await spotifyFetch<{
-      albums: { items: { id: string; name: string; artists: { name: string }[]; images: { url: string; width?: number }[]; external_urls: { spotify: string } }[] }
-    }>(`/v1/browse/new-releases?country=IN&limit=20`)
-    // For each album, fetch its first track to get normalized track fields — batch via Promise.all with concurrency cap
-    const albums = data.albums.items.slice(0, 16)
+    const queries = [
+      'top hits india',
+      'arijit singh',
+      'bollywood hits',
+      'punjabi hits',
+    ]
+    const seen = new Set<string>()
     const tracks: NormalizedTrack[] = []
-    // Sequential to avoid burst; 8 concurrent max in practice is fine
-    for (const album of albums) {
+    for (const q of queries) {
+      if (tracks.length >= 16) break
       try {
-        const td = await spotifyFetch<{ items: { id: string; name: string; artists: { name: string }[]; external_urls: { spotify: string }; preview_url: string | null; duration_ms: number }[] }>(
-          `/v1/albums/${album.id}/tracks?limit=1&market=IN`,
-        )
-        const t = td.items[0]
-        if (!t) continue
-        tracks.push({
-          id: t.id,
-          title: t.name,
-          artist: t.artists.map((a) => a.name).join(', '),
-          album: album.name,
-          artworkUrl: pickArtwork(album.images),
-          spotifyUrl: t.external_urls.spotify,
-          previewUrl: t.preview_url ?? null,
-          durationMs: t.duration_ms ?? null,
-          source: 'spotify',
-        })
-        if (tracks.length >= 12) break
+        const found = await searchTracks(q, 8)
+        for (const t of found) {
+          if (seen.has(t.id)) continue
+          seen.add(t.id)
+          tracks.push(t)
+          if (tracks.length >= 16) break
+        }
       } catch {
-        // skip this album
+        // skip query
       }
     }
     if (tracks.length) {
-      const result: ChartResult = { ok: true, source: 'spotify:browse:new-releases (not a chart — real Spotify releases)', tracks }
+      const result: ChartResult = {
+        ok: true,
+        source: 'spotify:search (real Spotify tracks — curated queries; not an official chart)',
+        tracks,
+      }
       chartCache = { at: now, result }
       return result
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     const status = (e as SpotifyApiError).status
-    const result: ChartResult = { ok: false, source: 'spotify:browse:new-releases', error: msg, status }
-    // Don't cache failures long — cache for 30s only
+    const result: ChartResult = { ok: false, source: 'spotify:search', error: msg, status }
     chartCache = { at: now - chartTtlMs() + 30_000, result }
     return result
   }
