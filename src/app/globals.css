@@ -117,7 +117,7 @@ button {
   text-align: center;
   padding: 16px var(--pad) 4px;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   background: url('/assets/bg-image.png') center center / cover no-repeat;
 }
 
@@ -189,7 +189,7 @@ button {
   flex-shrink: 0;
   position: relative;
   z-index: 5;
-  transform: translateY(-20px);
+  transform: translateY(-28px);
 }
 
 .welcome-spotify-link {
@@ -399,10 +399,10 @@ button {
   align-items: flex-end;
   justify-content: flex-start;
   gap: 10px;
-  min-height: 104px;
+  min-height: 148px;
   height: auto;
-  padding-bottom: 4px;
-  padding-top: 64px;
+  padding-bottom: 8px;
+  padding-top: 84px;
   width: max-content;
   min-width: 100%;
   margin: 0 auto;
@@ -501,12 +501,12 @@ button {
   border-radius: 8px;
 }
 
-/* Tooltip — positioned above maximum magnified height with consistent gap */
+/* Tooltip — positioned well above maximum magnified height with clear gap */
 .album-dock-tooltip {
   position: absolute;
-  bottom: calc(100% + 52px);
+  bottom: calc(100% + 68px);
   left: 50%;
-  transform: translateX(-50%) translateY(4px);
+  transform: translateX(-50%) translateY(6px);
   background-color: #000000;
   color: #ffffff;
   padding: 4px 9px;
