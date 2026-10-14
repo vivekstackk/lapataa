@@ -500,10 +500,10 @@ button {
   border-radius: 8px;
 }
 
-/* Tooltip — smooth fade with visibility guard to avoid cross-flicker */
+/* Tooltip — positioned above maximum magnified height with consistent gap */
 .album-dock-tooltip {
   position: absolute;
-  bottom: calc(100% + 10px);
+  bottom: calc(100% + 52px);
   left: 50%;
   transform: translateX(-50%) translateY(4px);
   background-color: #000000;
@@ -540,8 +540,8 @@ button {
 
 /* Footer (minimal) — subtle warm ivory, subordinate to dock */
 .welcome-footer {
-  margin-top: 0;
-  padding: 0 0 4px;
+  margin-top: 8px;
+  padding: 4px 0 6px;
   text-align: center;
   font-size: 11px;
   color: rgba(247, 240, 235, 0.5);
