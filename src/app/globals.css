@@ -189,7 +189,15 @@ button {
   flex-shrink: 0;
   position: relative;
   z-index: 5;
-  transform: translateY(-28px);
+}
+
+/* Main artwork/CD/info/controls lifted as a unit — Spotify stays */
+.welcome-player-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  transform: translateY(-20px);
 }
 
 .welcome-spotify-link {

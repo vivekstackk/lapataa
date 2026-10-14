@@ -48,76 +48,78 @@ export default function HomePage() {
           <SpotifyIcon /> Open in Spotify
         </a>
 
-        {/* Main Stage: artwork + disc */}
-        <div className="welcome-stage">
-          <div className="welcome-artwork">
-            {activeAlbum && (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={activeAlbum.image}
-                alt={`${activeAlbum.title} by ${activeAlbum.artist}`}
-              />
-            )}
+        <div className="welcome-player-main">
+          {/* Main Stage: artwork + disc */}
+          <div className="welcome-stage">
+            <div className="welcome-artwork">
+              {activeAlbum && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={activeAlbum.image}
+                  alt={`${activeAlbum.title} by ${activeAlbum.artist}`}
+                />
+              )}
+            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              className={`welcome-disc${isPlaying ? ' is-playing' : ''}`}
+              src="/brand/diskk.png"
+              alt=""
+              aria-hidden="true"
+            />
           </div>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className={`welcome-disc${isPlaying ? ' is-playing' : ''}`}
-            src="/brand/diskk.png"
-            alt=""
-            aria-hidden="true"
-          />
-        </div>
 
-        {/* Track Info */}
-        <div className="welcome-info">
-          <span className="welcome-artist">{activeAlbum?.artist ?? 'Lapata'}</span>
-          <span className="welcome-title">{activeAlbum?.title ?? 'Featured Album'}</span>
-        </div>
+          {/* Track Info */}
+          <div className="welcome-info">
+            <span className="welcome-artist">{activeAlbum?.artist ?? 'Lapata'}</span>
+            <span className="welcome-title">{activeAlbum?.title ?? 'Featured Album'}</span>
+          </div>
 
-        {/* Player Controls — Original PNG artwork with transparent hit areas */}
-        <div className="welcome-controls-wrap">
-          <div className="welcome-controls-pill" role="group" aria-label="Music player controls">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/assets/Glossy Minimal Media Control Pill(1).png"
-              alt="Music player controls (Play)"
-              className="music-control-artwork"
-              draggable={false}
-              style={{ display: isPlaying ? 'none' : 'block' }}
-            />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/assets/Glossy Pause Media Control Bar.png"
-              alt="Music player controls (Pause)"
-              className="music-control-artwork"
-              draggable={false}
-              style={{ display: isPlaying ? 'block' : 'none' }}
-            />
-            <button
-              className="pill-zone pill-zone--prev"
-              aria-label="Previous track"
-              type="button"
-              onClick={() => {
-                setActiveIndex((p) => (p - 1 + featuredAlbums.length) % featuredAlbums.length)
-                setIsPlaying(true)
-              }}
-            />
-            <button
-              className="pill-zone pill-zone--play"
-              aria-label={isPlaying ? 'Pause' : 'Play'}
-              aria-pressed={isPlaying}
-              type="button"
-              onClick={() => setIsPlaying((v) => !v)}
-            />
-            <button
-              className="pill-zone pill-zone--next"
-              aria-label="Next track"
-              type="button"
-              onClick={() => {
-                setActiveIndex((p) => (p + 1) % featuredAlbums.length)
-                setIsPlaying(true)
-              }}
-            />
+          {/* Player Controls — Original PNG artwork with transparent hit areas */}
+          <div className="welcome-controls-wrap">
+            <div className="welcome-controls-pill" role="group" aria-label="Music player controls">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/assets/Glossy Minimal Media Control Pill(1).png"
+                alt="Music player controls (Play)"
+                className="music-control-artwork"
+                draggable={false}
+                style={{ display: isPlaying ? 'none' : 'block' }}
+              />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/assets/Glossy Pause Media Control Bar.png"
+                alt="Music player controls (Pause)"
+                className="music-control-artwork"
+                draggable={false}
+                style={{ display: isPlaying ? 'block' : 'none' }}
+              />
+              <button
+                className="pill-zone pill-zone--prev"
+                aria-label="Previous track"
+                type="button"
+                onClick={() => {
+                  setActiveIndex((p) => (p - 1 + featuredAlbums.length) % featuredAlbums.length)
+                  setIsPlaying(true)
+                }}
+              />
+              <button
+                className="pill-zone pill-zone--play"
+                aria-label={isPlaying ? 'Pause' : 'Play'}
+                aria-pressed={isPlaying}
+                type="button"
+                onClick={() => setIsPlaying((v) => !v)}
+              />
+              <button
+                className="pill-zone pill-zone--next"
+                aria-label="Next track"
+                type="button"
+                onClick={() => {
+                  setActiveIndex((p) => (p + 1) % featuredAlbums.length)
+                  setIsPlaying(true)
+                }}
+              />
+            </div>
           </div>
         </div>
       </div>
