@@ -177,19 +177,18 @@ button {
   mix-blend-mode: multiply;
 }
 
-/* Central Music Player Stage — isolated from dock layout to prevent shake */
+/* Central Music Player Stage — balanced between header and dock */
 .welcome-player-center {
-  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  margin-top: auto;
+  margin-bottom: auto;
   width: 100%;
-  min-height: 0;
-  margin: 0;
+  flex-shrink: 0;
   position: relative;
   z-index: 5;
-  isolation: isolate;
 }
 
 .welcome-spotify-link {
@@ -249,20 +248,21 @@ button {
   display: block;
 }
 
-/* CD peeks from behind artwork — centered without margin-auto to avoid flex reflow */
+/* CD peeks from behind artwork — stable layout centering that cannot fall or shift */
 .welcome-disc {
   position: absolute;
   right: -18%;
-  top: 50%;
+  top: 0;
+  bottom: 0;
+  margin-top: auto;
+  margin-bottom: auto;
   width: 90%;
   height: 90%;
   z-index: 1;
   pointer-events: none;
   object-fit: contain;
   filter: drop-shadow(0 12px 28px rgba(0, 0, 0, 0.14));
-  transform: translateY(-50%);
   transform-origin: center center;
-  will-change: transform;
 }
 
 .welcome-disc.is-playing {
@@ -271,10 +271,10 @@ button {
 
 @keyframes cd-spin {
   from {
-    transform: translateY(-50%) rotate(0deg);
+    transform: rotate(0deg);
   }
   to {
-    transform: translateY(-50%) rotate(360deg);
+    transform: rotate(360deg);
   }
 }
 
@@ -369,14 +369,13 @@ button {
   border-radius: 0 9999px 9999px 0;
 }
 
-/* Album Dock (macOS-style magnification) — fixed reservation prevents main-card reflow */
+/* Album Dock (macOS-style magnification) — must scroll, never trap off-screen */
 .album-dock {
-  margin-top: auto;
+  margin-top: 0;
   margin-bottom: 0;
   padding: 0 var(--pad);
   max-width: 100%;
   width: 100%;
-  flex-shrink: 0;
   overflow-x: auto;
   overflow-y: visible;
   overscroll-behavior-x: contain;
@@ -385,9 +384,7 @@ button {
   -ms-overflow-style: none;
   align-self: stretch;
   position: relative;
-  contain: layout style;
-  height: 104px;
-  max-height: 104px;
+  flex-shrink: 0;
 }
 
 .album-dock::-webkit-scrollbar {
@@ -491,7 +488,7 @@ button {
   border-radius: 8px;
 }
 
-/* Tooltip — crossfade via opacity + subtle lift; visibility guards overlap */
+/* Tooltip — smooth fade with visibility guard to avoid cross-flicker */
 .album-dock-tooltip {
   position: absolute;
   bottom: calc(100% + 10px);
@@ -575,11 +572,10 @@ button {
     padding: 7px 14px;
   }
 
-  /* Keep same center isolation on mobile (dock fixed height handles spacing) */
+  /* Fill middle space and center player vertically between lowered header and dock */
   .welcome-player-center {
-    flex: 1 1 auto;
-    margin: 0;
-    min-height: 0;
+    margin-top: auto;
+    margin-bottom: auto;
   }
 
   .welcome-spotify-link {
@@ -609,9 +605,7 @@ button {
   }
 
   .album-dock {
-    height: 92px;
-    max-height: 92px;
-    margin-top: auto;
+    margin-top: 0;
     margin-bottom: 2px;
     padding: 0 10px;
   }
@@ -655,7 +649,6 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .welcome-disc.is-playing {
     animation: none;
-    transform: translateY(-50%) !important;
   }
 
   .album-dock-item-wrapper,
