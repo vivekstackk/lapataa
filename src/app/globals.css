@@ -427,47 +427,48 @@ button {
   transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Idle active item subtle boost — layout width + visual height via scale */
+/* Idle active item subtle boost — uniform scale preserves aspect */
 .album-dock:not(:hover) .album-dock-item-wrapper.is-active-wrapper {
   width: 58px;
 }
 .album-dock:not(:hover) .album-dock-item-wrapper.is-active-wrapper .album-dock-item {
-  transform: scaleY(1.1154);
+  transform: scale(1.1154);
 }
 
-/* Magnification: layout width grows, visual height via scaleY — no vertical reflow */
+/* Magnification: wrapper reserves horizontal space, thumb scales uniformly */
 .album-dock-item-wrapper.is-sibling-3 {
   width: 56px;
 }
 .album-dock-item-wrapper.is-sibling-3 .album-dock-item {
-  transform: scaleY(1.0769);
+  transform: scale(1.0769);
 }
 
 .album-dock-item-wrapper.is-sibling-2 {
   width: 64px;
 }
 .album-dock-item-wrapper.is-sibling-2 .album-dock-item {
-  transform: scaleY(1.2308);
+  transform: scale(1.2308);
 }
 
 .album-dock-item-wrapper.is-sibling-1 {
   width: 78px;
 }
 .album-dock-item-wrapper.is-sibling-1 .album-dock-item {
-  transform: scaleY(1.5);
+  transform: scale(1.5);
 }
 
 .album-dock-item-wrapper.is-hovered {
   width: 96px;
 }
 .album-dock-item-wrapper.is-hovered .album-dock-item {
-  transform: scaleY(1.8462);
+  transform: scale(1.8462);
 }
 
 .album-dock-item {
-  width: 100%;
+  width: 52px;
   height: 52px;
   display: block;
+  flex-shrink: 0;
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
