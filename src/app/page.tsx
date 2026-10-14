@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { featuredAlbums } from '@/data/music'
+import { featuredAlbums as fallbackAlbums } from '@/data/music'
+import type { Album } from '@/data/music'
 import AlbumDock from '@/components/album-dock'
 
 function SpotifyIcon({ className = 'w-4 h-4' }: { className?: string }) {
@@ -13,10 +14,96 @@ function SpotifyIcon({ className = 'w-4 h-4' }: { className?: string }) {
   )
 }
 
+type ChartTrack = {
+  id: string
+  title: string
+  artist: string
+  album: string
+  artworkUrl: string | null
+  spotifyUrl: string
+  previewUrl: string | null
+  durationMs: number | null
+}
+
+function toAlbum(t: ChartTrack): Album {
+  return {
+    id: t.id,
+    title: t.title,
+    artist: t.artist,
+    year: '',
+    genre: t.album ? t.album : 'Single',
+    rating: '',
+    image: t.artworkUrl ?? fallbackAlbums[0]?.image ?? '',
+    tracks: t.album ? [t.album] : undefined,
+  }
+}
+
 export default function HomePage() {
+  const [albums, setAlbums] = useState<Album[]>(fallbackAlbums)
+  const [chartSource, setChartSource] = useState<string | null>(null)
+  const [chartError, setChartError] = useState<string | null>(null)
+  const [chartLoading, setChartLoading] = useState(true)
   const [activeIndex, setActiveIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
-  const activeAlbum = featuredAlbums[activeIndex] ?? null
+  // Avoid stale closures on rapid refresh
+  const activeIdRef = useRef<string | null>(null)
+  const activeAlbum = albums[activeIndex] ?? null
+  const spotifyHref = (() => {
+    const t = albums[activeIndex] as unknown as { spotifyUrl?: string } | null
+    const url = t && 'spotifyUrl' in t ? (t as { spotifyUrl?: string }).spotifyUrl : undefined
+    return url || 'https://open.spotify.com'
+  })()
+
+  useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+    async function load() {
+      try {
+        setChartLoading(true)
+        setChartError(null)
+        const res = await fetch('/api/music/chart', { signal: controller.signal, cache: 'no-store' })
+        const data = (await res.json()) as {
+          ok: boolean
+          source?: string
+          tracks?: ChartTrack[]
+          error?: string
+        }
+        if (cancelled) return
+        if (!res.ok || !data.ok || !data.tracks?.length) {
+          setChartError(data.error ?? `Chart unavailable (${res.status})`)
+          setChartSource(data.source ?? null)
+          return
+        }
+        const mapped = data.tracks.map(toAlbum)
+        // Preserve active selection by id when possible
+        const prevId = albums[activeIndex]?.id ?? activeIdRef.current
+        setAlbums(mapped)
+        setChartSource(data.source ?? null)
+        if (prevId) {
+          const idx = mapped.findIndex((a) => a.id === prevId)
+          if (idx >= 0) setActiveIndex(idx)
+          else setActiveIndex((i) => Math.min(i, mapped.length - 1))
+        }
+      } catch (e) {
+        if (cancelled) return
+        if ((e as Error).name === 'AbortError') return
+        setChartError(e instanceof Error ? e.message : String(e))
+      } finally {
+        if (!cancelled) setChartLoading(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+    // Load once on mount — do not depend on albums/activeIndex to avoid loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    activeIdRef.current = albums[activeIndex]?.id ?? null
+  }, [albums, activeIndex])
 
   return (
     <main className="welcome">
@@ -41,12 +128,20 @@ export default function HomePage() {
         {/* Spotify-style link */}
         <a
           className="welcome-spotify-link"
-          href="https://spotify.com"
+          href={spotifyHref}
           target="_blank"
           rel="noopener noreferrer"
         >
           <SpotifyIcon /> Open in Spotify
         </a>
+        {chartLoading && <span className="sr-only" aria-live="polite">Loading chart…</span>}
+        {chartError && (
+          <span className="welcome-chart-hint" role="status" aria-live="polite" title={chartSource ?? undefined}>
+            {chartSource ? `${chartSource}: ` : ''}
+            {chartError}
+            {' — showing local tracks'}
+          </span>
+        )}
 
         <div className="welcome-player-main">
           {/* Main Stage: artwork + disc */}
@@ -98,10 +193,10 @@ export default function HomePage() {
                 className="pill-zone pill-zone--prev"
                 aria-label="Previous track"
                 type="button"
-                onClick={() => {
-                  setActiveIndex((p) => (p - 1 + featuredAlbums.length) % featuredAlbums.length)
-                  setIsPlaying(true)
-                }}
+              onClick={() => {
+                setActiveIndex((p) => (p - 1 + albums.length) % albums.length)
+                setIsPlaying(true)
+              }}
               />
               <button
                 className="pill-zone pill-zone--play"
@@ -114,10 +209,10 @@ export default function HomePage() {
                 className="pill-zone pill-zone--next"
                 aria-label="Next track"
                 type="button"
-                onClick={() => {
-                  setActiveIndex((p) => (p + 1) % featuredAlbums.length)
-                  setIsPlaying(true)
-                }}
+              onClick={() => {
+                setActiveIndex((p) => (p + 1) % albums.length)
+                setIsPlaying(true)
+              }}
               />
             </div>
           </div>
@@ -126,7 +221,7 @@ export default function HomePage() {
 
       {/* Album Dock with macOS magnification effect */}
       <AlbumDock
-        albums={featuredAlbums}
+        albums={albums}
         activeIndex={activeIndex}
         onSelect={setActiveIndex}
       />

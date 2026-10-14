@@ -298,6 +298,17 @@ button {
   flex-shrink: 0;
 }
 
+.welcome-chart-hint {
+  font-family: var(--sans);
+  font-size: 11px;
+  color: rgba(247, 240, 235, 0.72);
+  letter-spacing: 0.02em;
+  margin-bottom: 10px;
+  text-align: center;
+  max-width: 520px;
+  line-height: 1.4;
+}
+
 .welcome-artist {
   font-family: var(--sans);
   font-size: 13px;
