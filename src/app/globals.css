@@ -424,7 +424,7 @@ button {
   width: 52px;
   height: 52px;
   will-change: width;
-  transition: width 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Idle active item subtle boost — layout width + visual height via scale */
@@ -477,7 +477,7 @@ button {
   border: none;
   transform-origin: bottom center;
   will-change: transform, opacity;
-  transition: opacity 0.2s ease, outline-color 0.2s ease, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.2s ease, outline-color 0.2s ease, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .album-dock-item:hover,
@@ -501,7 +501,7 @@ button {
   border-radius: 8px;
 }
 
-/* Tooltip — positioned well above maximum magnified height with clear gap */
+/* Tooltip — reference-style fade: unified 0.5s curve with magnification */
 .album-dock-tooltip {
   position: absolute;
   bottom: calc(100% + 68px);
@@ -524,9 +524,9 @@ button {
   visibility: hidden;
   will-change: opacity, transform;
   transition:
-    opacity 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    visibility 0s linear 160ms;
+    opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0s linear 0.5s;
 }
 
 .album-dock-item-wrapper.is-hovered .album-dock-tooltip {
@@ -534,8 +534,8 @@ button {
   visibility: visible;
   transform: translateX(-50%) translateY(0);
   transition:
-    opacity 140ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
     visibility 0s linear 0s;
 }
 
