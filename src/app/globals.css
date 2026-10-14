@@ -510,10 +510,10 @@ button {
   border-radius: 8px;
 }
 
-/* Tooltip — reference-style fade: unified 0.5s curve with magnification */
+/* Tooltip — positioned above tallest magnified thumbnail + gap */
 .album-dock-tooltip {
   position: absolute;
-  bottom: calc(100% + 68px);
+  bottom: calc(100% + 56px);
   left: 50%;
   transform: translateX(-50%) translateY(6px);
   background-color: #000000;
