@@ -177,18 +177,19 @@ button {
   mix-blend-mode: multiply;
 }
 
-/* Central Music Player Stage — balanced between header and dock */
+/* Central Music Player Stage — isolated from dock layout to prevent shake */
 .welcome-player-center {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  margin-top: auto;
-  margin-bottom: auto;
   width: 100%;
-  flex-shrink: 0;
+  min-height: 0;
+  margin: 0;
   position: relative;
   z-index: 5;
+  isolation: isolate;
 }
 
 .welcome-spotify-link {
@@ -248,21 +249,20 @@ button {
   display: block;
 }
 
-/* CD peeks from behind artwork — stable layout centering that cannot fall or shift */
+/* CD peeks from behind artwork — centered without margin-auto to avoid flex reflow */
 .welcome-disc {
   position: absolute;
   right: -18%;
-  top: 0;
-  bottom: 0;
-  margin-top: auto;
-  margin-bottom: auto;
+  top: 50%;
   width: 90%;
   height: 90%;
   z-index: 1;
   pointer-events: none;
   object-fit: contain;
   filter: drop-shadow(0 12px 28px rgba(0, 0, 0, 0.14));
+  transform: translateY(-50%);
   transform-origin: center center;
+  will-change: transform;
 }
 
 .welcome-disc.is-playing {
@@ -271,10 +271,10 @@ button {
 
 @keyframes cd-spin {
   from {
-    transform: rotate(0deg);
+    transform: translateY(-50%) rotate(0deg);
   }
   to {
-    transform: rotate(360deg);
+    transform: translateY(-50%) rotate(360deg);
   }
 }
 
@@ -369,13 +369,14 @@ button {
   border-radius: 0 9999px 9999px 0;
 }
 
-/* Album Dock (macOS-style magnification) — must scroll, never trap off-screen */
+/* Album Dock (macOS-style magnification) — fixed reservation prevents main-card reflow */
 .album-dock {
-  margin-top: 0;
+  margin-top: auto;
   margin-bottom: 0;
   padding: 0 var(--pad);
   max-width: 100%;
   width: 100%;
+  flex-shrink: 0;
   overflow-x: auto;
   overflow-y: visible;
   overscroll-behavior-x: contain;
@@ -384,7 +385,9 @@ button {
   -ms-overflow-style: none;
   align-self: stretch;
   position: relative;
-  flex-shrink: 0;
+  contain: layout style;
+  height: 104px;
+  max-height: 104px;
 }
 
 .album-dock::-webkit-scrollbar {
@@ -488,7 +491,7 @@ button {
   border-radius: 8px;
 }
 
-/* Tooltip — strictly anchored 10px above the top of the card */
+/* Tooltip — crossfade via opacity + subtle lift; visibility guards overlap */
 .album-dock-tooltip {
   position: absolute;
   bottom: calc(100% + 10px);
@@ -508,15 +511,22 @@ button {
   z-index: 50;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   opacity: 0;
-  /* Fade-OUT: delay slightly so next tooltip can start fading in first */
-  transition: opacity 0.12s ease-out 0.06s, transform 0.12s ease-out 0.06s;
+  visibility: hidden;
+  will-change: opacity, transform;
+  transition:
+    opacity 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 160ms;
 }
 
 .album-dock-item-wrapper.is-hovered .album-dock-tooltip {
   opacity: 1;
+  visibility: visible;
   transform: translateX(-50%) translateY(0);
-  /* Fade-IN: instant, no delay */
-  transition: opacity 0.1s ease-in 0s, transform 0.1s ease-in 0s;
+  transition:
+    opacity 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0s;
 }
 
 /* Footer (minimal) — subtle warm ivory, subordinate to dock */
@@ -565,10 +575,11 @@ button {
     padding: 7px 14px;
   }
 
-  /* Fill middle space and center player vertically between lowered header and dock */
+  /* Keep same center isolation on mobile (dock fixed height handles spacing) */
   .welcome-player-center {
-    margin-top: auto;
-    margin-bottom: auto;
+    flex: 1 1 auto;
+    margin: 0;
+    min-height: 0;
   }
 
   .welcome-spotify-link {
@@ -598,7 +609,9 @@ button {
   }
 
   .album-dock {
-    margin-top: 0;
+    height: 92px;
+    max-height: 92px;
+    margin-top: auto;
     margin-bottom: 2px;
     padding: 0 10px;
   }
@@ -642,12 +655,16 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .welcome-disc.is-playing {
     animation: none;
+    transform: translateY(-50%) !important;
   }
 
   .album-dock-item-wrapper,
-  .album-dock-item,
-  .album-dock-tooltip {
+  .album-dock-item {
     transform: none !important;
+    transition: none !important;
+  }
+
+  .album-dock-tooltip {
     transition: none !important;
   }
 
