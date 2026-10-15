@@ -308,26 +308,25 @@ export async function getChartTracks(): Promise<ChartResult> {
     // If Deezer returned empty, record so diagnostics can report it (but fall through to iTunes)
   } catch {}
 
-  // Attempt 3: iTunes RSS Top 50 — OFFICIAL verified chart fallback (no Spotify/Deezer permissions needed).
+  // Attempt 3: iTunes mixed aesthetic — US+IN shuffled daily, variants deduped, no duplicate song twice.
   try {
-    const { fetchItunesTop50 } = await import('./itunesChart')
-    const itunes = await fetchItunesTop50()
-    if (itunes.tracks.length >= 16) {
-      // Map iTunes chart to NormalizedTrack shape (keep source itunes, attach spotifyUrl attempt via search)
-      const mapped: NormalizedTrack[] = itunes.tracks.slice(0, 50).map((t) => ({
+    const { fetchMixedAesthetic50 } = await import('./itunesMix')
+    const mixed = await fetchMixedAesthetic50()
+    if (mixed.tracks.length >= 16) {
+      const mapped: NormalizedTrack[] = mixed.tracks.slice(0, 50).map((t) => ({
         id: t.id,
         title: t.title,
         artist: t.artist,
         album: t.album,
         artworkUrl: t.artworkUrl,
-        spotifyUrl: t.itunesUrl, // real chart link; Spotify link attempted via optional enrichment below
+        spotifyUrl: t.itunesUrl,
         previewUrl: t.previewUrl,
         durationMs: null,
         source: 'spotify' as const,
         previewSource: (t.previewUrl ? 'itunes' : undefined) as NormalizedTrack['previewSource'],
         itunesUrl: t.itunesUrl,
       }))
-      // Try to backfill Spotify track URL where possible (search by title+artist, keep iTunes if not found)
+      // Backfill Spotify URL for dock window only (less spam)
       try {
         for (let i = 0; i < Math.min(16, mapped.length); i++) {
           const t = mapped[i]!
@@ -345,7 +344,7 @@ export async function getChartTracks(): Promise<ChartResult> {
       } catch {}
       const result: ChartResult = {
         ok: true,
-        source: itunes.source,
+        source: mixed.source,
         tracks: mapped,
         fetchedAt,
       }

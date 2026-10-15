@@ -1,7 +1,5 @@
-// iTunes RSS Global Top 50 — OFFICIAL chart alternative (public, no auth).
-// https://itunes.apple.com/us/rss/topsongs/limit=50/json — Apple Music Top 50 US (global proxy).
-// Used as primary chart provider since Spotify playlist/browse are 403 for this app.
-// Keeps dir coupled: chart -> this provider; Spotify kept for per-track spotifyUrl/preview attempts.
+// iTunes RSS Mixed aesthetic Global — shuffle-safe, deduped, no variant spam.
+// No Spotify curated playlist browse 403, so Apple Music RSS as primary.
 export type ItunesChartTrack = {
   rank: number
   id: string
