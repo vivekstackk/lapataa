@@ -172,6 +172,25 @@ export default function HomePage() {
     const url = t && ('spotifyUrl' in t || 'itunesUrl' in t) ? ((t as { spotifyUrl?: string }).spotifyUrl ?? (t as { itunesUrl?: string }).itunesUrl) : undefined
     return url || 'https://open.spotify.com'
   })()
+  // One-time: if locked dock has duplicate artwork (e.g. BAD TIMES twice), reset to fresh 16
+  useEffect(() => {
+    if (!dockLocked || !didHydratePersist || !isRealChart(allChartAlbums)) return
+    const seenArt = new Set<string>()
+    let hasDup = false
+    for (const t of dockLocked.tracks) {
+      const k = t.image?.replace(/\/\d+x\d+bb\.(png|jpg)$/, '').toLowerCase() ?? t.title.toLowerCase()
+      if (seenArt.has(k)) { hasDup = true; break }
+      seenArt.add(k)
+    }
+    if (hasDup) {
+      try { localStorage.removeItem(DOCK_KEY) } catch {}
+      const fresh = windows[0] ?? allChartAlbums.slice(0, 16)
+      const locked: DockPersist = { window: 0, selectedAt: Date.now(), tracks: fresh }
+      setDockLocked(locked)
+      writeDockPersist(locked)
+      if (fresh[0]) setActiveId(fresh[0].id)
+    }
+  }, [dockLocked, didHydratePersist, windows, allChartAlbums])
   // After dock hydration + chart load, ensure activeId is inside the visible 16 (from mock fallback -> real)
   useEffect(() => {
     if (!didHydratePersist || !dockAlbums.length) return

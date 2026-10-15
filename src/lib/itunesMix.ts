@@ -6,9 +6,15 @@ import { fetchItunesTop50 } from './itunesChart'
 function variantBase(title: string): string {
   return title
     .toLowerCase()
-    .replace(/\s*\(.*?(version|remix|acoustic|extended|live|edit|radio|instrumental).*?\)\s*$/i, '')
-    .replace(/\s*-\s*(acoustic|piano|extended).*$/i, '')
+    .replace(/\s*\(.*?(version|remix|acoustic|extended|live|edit|radio|instrumental|piano).*?\)\s*$/i, '')
+    .replace(/\s*-\s*(acoustic|piano|extended|remix|version).*$/i, '')
+    .replace(/\s*-\s*single\s*$/i, '')
     .trim()
+}
+
+function artworkKey(url: string | null): string {
+  if (!url) return ''
+  return url.replace(/\/\d+x\d+bb\.(png|jpg)$/, '').toLowerCase()
 }
 
 function seededShuffle<T>(arr: T[], seed: string): T[] {
@@ -27,16 +33,20 @@ function seededShuffle<T>(arr: T[], seed: string): T[] {
 export async function fetchMixedAesthetic50(): Promise<{ tracks: import('./itunesChart').ItunesChartTrack[]; source: string }> {
   const [us, inn] = await Promise.all([fetchItunesTop50(), import('./itunesChartIndia').then(m => m.fetchItunesTop50India())])
   const all = [...us.tracks, ...inn.tracks]
-  // Deduplicate by id, then by variant base + artist main
+  // Deduplicate by id, variant base+artist, and shared artwork (your BAD TIMES two albums share one cover)
   const byId = new Map<string, typeof all[number]>()
   const byVariant = new Map<string, typeof all[number]>()
+  const byArtwork = new Map<string, string>()
   const deduped: typeof all[number][] = []
   for (const t of all) {
     if (byId.has(t.id)) continue
-    const key = `${variantBase(t.title)}::${t.artist.split(',')[0]!.split('&')[0]!.trim().toLowerCase()}`
-    if (byVariant.has(key)) continue
+    const variantKey = `${variantBase(t.title)}::${t.artist.split(',')[0]!.split('&')[0]!.trim().toLowerCase()}`
+    if (byVariant.has(variantKey)) continue
+    const art = artworkKey(t.artworkUrl)
+    if (art && byArtwork.has(art)) continue
     byId.set(t.id, t)
-    byVariant.set(key, t)
+    byVariant.set(variantKey, t)
+    if (art) byArtwork.set(art, t.id)
     deduped.push(t)
   }
   // Deterministic daily shuffle — locks still 24h, but order mixes regions aesthetically
