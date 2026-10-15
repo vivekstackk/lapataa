@@ -63,29 +63,58 @@ function chartWindows(all: Album[]): Album[][] {
 }
 
 const DOCK_MS = 86400000
-const DOCK_KEY = 'lapata:dockLocked:v2'
+const DOCK_KEY = 'lapata:dockLocked:v3'
 type DockPersist = { window: number; selectedAt: number; tracks: Album[] }
+
+function isMockAlbum(a: Album): boolean {
+  if (/^\d+$/.test(a.id) && Number(a.id) >= 1 && Number(a.id) <= 32) return true
+  const realPrefix = a.id.startsWith('itunes:') || a.id.startsWith('deezer:')
+  if (a.image?.includes('images.unsplash.com') && !realPrefix) return true
+  return false
+}
+
+function isRealChart(albums: Album[]): boolean {
+  if (albums.length < 16) return false
+  const firstId = albums[0]?.id ?? ''
+  return firstId.startsWith('itunes:') || firstId.startsWith('deezer:')
+}
+
+function isMockPersist(p: DockPersist): boolean {
+  if (!p.tracks.length) return true
+  // If any track looks mock, the whole persist is stale
+  if (p.tracks.some(isMockAlbum)) return true
+  if (p.tracks.length !== 16) return true
+  return false
+}
 
 function readDockPersist(): DockPersist | null {
   if (typeof window === 'undefined') return null
   try {
     const raw = localStorage.getItem(DOCK_KEY)
-    if (!raw) {
-      // Migrate from old key if present
-      const legacy = localStorage.getItem('lapata:dockLocked')
-      if (legacy) {
-        try {
-          const ld = JSON.parse(legacy) as { window: number; selectedAt: number }
-          if (typeof ld.window === 'number' && typeof ld.selectedAt === 'number') {
-            return { window: ld.window, selectedAt: ld.selectedAt, tracks: [] as Album[] }
-          }
-        } catch {}
+    if (raw) {
+      const d = JSON.parse(raw) as DockPersist
+      if (typeof d.window === 'number' && typeof d.selectedAt !== 'number' && !Array.isArray(d.tracks)) return null
+      if (typeof d.window !== 'number' || typeof d.selectedAt !== 'number' || !Array.isArray(d.tracks)) return null
+      if (isMockPersist(d)) {
+        try { localStorage.removeItem(DOCK_KEY) } catch {}
+        return null
       }
-      return null
+      return d
     }
-    const d = JSON.parse(raw) as DockPersist
-    if (typeof d.window !== 'number' || typeof d.selectedAt !== 'number' || !Array.isArray(d.tracks)) return null
-    return d
+    // Migrate from older keys — but reject mock data
+    for (const legacyKey of ['lapata:dockLocked:v2', 'lapata:dockLocked', 'lapata:dockWindow']) {
+      const legacy = localStorage.getItem(legacyKey)
+      if (!legacy) continue
+      try {
+        const ld = JSON.parse(legacy) as { window: number; selectedAt: number; tracks?: Album[] }
+        if (typeof ld.window === 'number' && typeof ld.selectedAt === 'number') {
+          if (ld.tracks && Array.isArray(ld.tracks) && ld.tracks.length === 16 && !ld.tracks.some(isMockAlbum)) {
+            return { window: ld.window, selectedAt: ld.selectedAt, tracks: ld.tracks as Album[] }
+          }
+        }
+      } catch {}
+    }
+    return null
   } catch {
     return null
   }
@@ -94,11 +123,14 @@ function readDockPersist(): DockPersist | null {
 function writeDockPersist(p: DockPersist) {
   try {
     localStorage.setItem(DOCK_KEY, JSON.stringify(p))
-    // Clean legacy
+    // Clean legacy keys
     localStorage.removeItem('lapata:dockLocked')
+    localStorage.removeItem('lapata:dockLocked:v2')
     localStorage.removeItem('lapata:dockWindow')
   } catch {}
 }
+
+/* isRealChart defined above with isMockAlbum — covers itunes: and deezer: */
 
 export default function HomePage() {
   const [allChartAlbums, setAllChartAlbums] = useState<Album[]>(fallbackAlbums)
@@ -108,38 +140,61 @@ export default function HomePage() {
   const [chartLoading, setChartLoading] = useState(true)
   const [activeId, setActiveId] = useState<string | null>(fallbackAlbums[0]?.id ?? null)
   const [isPlaying, setIsPlaying] = useState(false)
-  // 24h-locked dock state
-  const [dockLocked, setDockLocked] = useState<DockPersist | null>(() => {
+  const [didHydratePersist, setDidHydratePersist] = useState(false)
+  const [dockLocked, setDockLocked] = useState<DockPersist | null>(null)
+  useEffect(() => {
     const p = readDockPersist()
-    if (!p) return null
+    if (!p) { setDidHydratePersist(true); return }
     const elapsed = Date.now() - p.selectedAt
-    if (elapsed < 0 || elapsed >= DOCK_MS) return null
-    if (!p.tracks.length) return null
-    return p
-  })
+    if (elapsed >= 0 && elapsed < DOCK_MS && p.tracks.length === 16 && !isMockPersist(p)) setDockLocked(p)
+    else {
+      // Expired or mock — clear so a real window will be locked from fresh chart
+      try { localStorage.removeItem(DOCK_KEY) } catch {}
+    }
+    setDidHydratePersist(true)
+  }, [])
   const windows = chartWindows(allChartAlbums)
   const dockWindow = dockLocked?.window ?? 0
-  // Locked 16-track selection — stable for 24h, chart refresh does NOT replace it
   const dockAlbums = (() => {
+    if (!didHydratePersist) return [] // avoid flash of mock before persist resolves
     if (dockLocked && dockLocked.tracks.length === 16) {
       const elapsed = Date.now() - dockLocked.selectedAt
       if (elapsed >= 0 && elapsed < DOCK_MS) return dockLocked.tracks
     }
     return windows[dockWindow] ?? windows[0] ?? allChartAlbums.slice(0, 16)
   })()
-  // Active album resolved from allChartAlbums so playback persists across window rotation
-  const activeAlbum = (allChartAlbums.find((a) => a.id === activeId) ?? allChartAlbums[0] ?? fallbackAlbums[0]) as Album
-  const activeIndex = Math.max(0, allChartAlbums.findIndex((a) => a.id === activeId))
+  // When dock hasn't hydrated yet, show nothing in main player rather than mock
+  const effectiveAllChart = allChartAlbums
+  const activeAlbum = (effectiveAllChart.find((a) => a.id === activeId) ?? effectiveAllChart[0] ?? null) as Album | null
+  const activeIndex = Math.max(0, effectiveAllChart.findIndex((a) => a.id === activeId))
   const spotifyHref = (() => {
-    const t = allChartAlbums.find((a) => a.id === activeId) as unknown as { spotifyUrl?: string } | null
-    const url = t && 'spotifyUrl' in t ? (t as { spotifyUrl?: string }).spotifyUrl : undefined
+    const t = effectiveAllChart.find((a) => a.id === activeId) as unknown as { spotifyUrl?: string; itunesUrl?: string } | null
+    const url = t && ('spotifyUrl' in t || 'itunesUrl' in t) ? ((t as { spotifyUrl?: string }).spotifyUrl ?? (t as { itunesUrl?: string }).itunesUrl) : undefined
     return url || 'https://open.spotify.com'
   })()
 
   // Preview audio — single element, cleanup on change
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  // Keep message removed from UI; log only for diagnosis
   const previewUrl = (activeAlbum as unknown as { previewUrl?: string | null })?.previewUrl ?? null
+  // Dev-only diagnostic — verify live provider vs mock
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return
+    if (!didHydratePersist || chartLoading) return
+    const liveItunes = allChartAlbums.filter((a) => a.id.startsWith('itunes:')).length
+    const liveDeezer = allChartAlbums.filter((a) => a.id.startsWith('deezer:')).length
+    const mock = allChartAlbums.filter((a) => /^\d+$/.test(a.id) && Number(a.id) <= 16).length
+    console.info('[Lapata diag]', {
+      provider: chartSource,
+      fetchedAt,
+      total: allChartAlbums.length,
+      liveItunes,
+      liveDeezer,
+      mockFallback: mock,
+      dockWindow,
+      dockTracks: dockAlbums.slice(0, 5).map((t) => `${t.title} — ${t.artist}`),
+      locked: !!dockLocked,
+    })
+  }, [didHydratePersist, chartLoading, allChartAlbums, chartSource, fetchedAt, dockWindow, dockAlbums, dockLocked])
 
   useEffect(() => {
     const el = audioRef.current
@@ -204,30 +259,38 @@ export default function HomePage() {
     }
   }, [allChartAlbums, activeId])
 
-  // Initialize or restore 24h-locked dock: on mount, either keep locked tracks or lock current window
+  // Initialize or restore 24h-locked dock: lock only from real chart, never from fallbackAlbums
   useEffect(() => {
     if (!windows.length) return
     if (dockLocked) return // already locked, 24h timer below handles rotation
+    if (!isRealChart(allChartAlbums)) return // wait for real Global Top 50 — do not lock mock
+    // If persist had mock, or we never locked, pick window 0 of real chart
     const nextTracks = windows[0] ?? allChartAlbums.slice(0, 16)
-    if (!nextTracks.length) return
+    if (!nextTracks.length || nextTracks.some(isMockAlbum)) return
+    // Ensure activeId points into real chart if it was on a mock
+    if (activeId && !allChartAlbums.some((a) => a.id === activeId)) {
+      const firstReal = nextTracks[0] ?? allChartAlbums[0]
+      if (firstReal) setActiveId(firstReal.id)
+    }
     const locked: DockPersist = { window: 0, selectedAt: Date.now(), tracks: nextTracks }
     setDockLocked(locked)
     writeDockPersist(locked)
-  }, [windows.length, dockLocked, allChartAlbums])
+  }, [windows.length, dockLocked, allChartAlbums, activeId])
 
-  // 24h rotation — single setTimeout locked to selectedAt, recreates from next window on expiry
+  // 24h rotation — single setTimeout locked to selectedAt, uses real chart windows
   useEffect(() => {
     if (!dockLocked) return
     if (!windows.length) return
+    if (!isRealChart(allChartAlbums)) return
     const elapsed = Date.now() - dockLocked.selectedAt
     const delay = Math.max(0, DOCK_MS - elapsed)
     const timeout = setTimeout(() => {
       const nextWindow = (dockLocked.window + 1) % windows.length
       const nextTracks = windows[nextWindow] ?? allChartAlbums.slice(0, 16)
+      if (nextTracks.some(isMockAlbum)) return // do not rotate into mock
       const locked: DockPersist = { window: nextWindow, selectedAt: Date.now(), tracks: nextTracks }
       setDockLocked(locked)
       writeDockPersist(locked)
-      // No extra reschedule needed — effect re-runs on dockLocked change
     }, delay)
     return () => clearTimeout(timeout)
   }, [dockLocked, windows, allChartAlbums])
@@ -254,15 +317,29 @@ export default function HomePage() {
           setChartError(data.error ?? `Chart unavailable (${res.status})`)
           setChartSource(data.source ?? null)
           if (data.fetchedAt) setFetchedAt(data.fetchedAt)
-          // Preserve last valid — do not clear allChartAlbums
+          // Do NOT overwrite real chart with empty/mock — keep last valid
           return
         }
         const mapped = data.tracks.map(toAlbum)
+        if (mapped.some((a) => !a.id?.startsWith('itunes:') && /^\d+$/.test(a.id))) {
+          // Backend mistakenly returned mock-like ids — ignore; real chart must be itunes: prefix
+          console.warn('[Lapata] ignoring chart response with mock ids')
+          return
+        }
         setAllChartAlbums(mapped)
         setChartSource(data.source ?? null)
         if (data.fetchedAt) setFetchedAt(data.fetchedAt)
-        // Preserve activeId if still in new chart
-        // Don't change activeId here unless it vanished
+        // If current dock is still on mock/fallback, migrate to real immediately (one-time)
+        if (dockLocked && isMockPersist(dockLocked)) {
+          const firstReal = mapped.slice(0, 16)
+          const migrated: DockPersist = { window: 0, selectedAt: Date.now(), tracks: firstReal }
+          setDockLocked(migrated)
+          writeDockPersist(migrated)
+        }
+        // If activeId is mock and not in new chart, switch to first real track without interrupting if already real
+        if (activeId && !mapped.some((a) => a.id === activeId) && isMockAlbum({ id: activeId } as Album)) {
+          setActiveId(mapped[0]!.id)
+        }
       } catch (e) {
         if (cancelled) return
         if ((e as Error).name === 'AbortError') return
@@ -316,12 +393,13 @@ export default function HomePage() {
         >
           <SpotifyIcon /> Open in Spotify
         </a>
-        {chartLoading && <span className="sr-only" aria-live="polite">Loading chart…</span>}
-        {chartError && (
+        {chartLoading && didHydratePersist && !dockLocked && <span className="sr-only" aria-live="polite">Loading chart…</span>}
+        {chartLoading && !didHydratePersist && <span className="welcome-chart-hint" role="status">Loading Global Top 50…</span>}
+        {chartError && didHydratePersist && (
           <span className="welcome-chart-hint" role="status" aria-live="polite" title={chartSource ?? undefined}>
             {chartSource ? `${chartSource}: ` : ''}
             {chartError}
-            {' — showing local tracks'}
+            {dockLocked ? '' : ' — chart unavailable'}
           </span>
         )}
 
@@ -329,12 +407,14 @@ export default function HomePage() {
           {/* Main Stage: artwork + disc */}
           <div className="welcome-stage">
             <div className="welcome-artwork">
-              {activeAlbum && (
+              {activeAlbum ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={activeAlbum.image}
                   alt={`${activeAlbum.title} by ${activeAlbum.artist}`}
                 />
+              ) : (
+                <div className="welcome-artwork--empty" aria-hidden="true" />
               )}
             </div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -348,8 +428,8 @@ export default function HomePage() {
 
           {/* Track Info */}
           <div className="welcome-info">
-            <span className="welcome-artist">{activeAlbum?.artist ?? 'Lapata'}</span>
-            <span className="welcome-title">{activeAlbum?.title ?? 'Featured Album'}</span>
+            <span className="welcome-artist">{activeAlbum?.artist ?? (chartLoading ? 'Loading…' : '—')}</span>
+            <span className="welcome-title">{activeAlbum?.title ?? (chartLoading ? 'Loading Global Top 50' : 'Chart unavailable')}</span>
           </div>
 
           {/* Player Controls — Original PNG artwork with transparent hit areas */}
@@ -409,16 +489,22 @@ export default function HomePage() {
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <audio ref={audioRef} preload="none" crossOrigin="anonymous" style={{ display: 'none' }} />
 
-      {/* Album Dock with macOS magnification effect — 16 at a time */}
-      <AlbumDock
-        albums={dockAlbums}
-        activeIndex={Math.max(0, dockAlbums.findIndex((a) => a.id === activeId))}
-        activeId={activeId}
-        onSelect={(i) => {
-          const id = dockAlbums[i]?.id
-          if (id) setActiveId(id)
-        }}
-      />
+      {/* Album Dock — 16 locked tracks, hidden until hydrated to avoid mock flash */}
+      {didHydratePersist && dockAlbums.length > 0 ? (
+        <AlbumDock
+          albums={dockAlbums}
+          activeIndex={Math.max(0, dockAlbums.findIndex((a) => a.id === activeId))}
+          activeId={activeId}
+          onSelect={(i) => {
+            const id = dockAlbums[i]?.id
+            if (id) setActiveId(id)
+          }}
+        />
+      ) : (
+        <div className="album-dock album-dock--loading" aria-hidden="true">
+          <div className="album-dock-inner" />
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="welcome-footer">

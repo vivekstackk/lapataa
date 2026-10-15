@@ -276,7 +276,85 @@ export async function getChartTracks(): Promise<ChartResult> {
     }
   }
 
-  // Attempt 2: search-based GLOBAL tracks — guaranteed available via Client Credentials.
+  // Attempt 2: Deezer Chart — public, no auth. Try first as requested.
+  // Deezer tracks are often empty for this server region (India, open=false), so detect empty and fall through.
+  try {
+    const { fetchDeezerChart } = await import('./deezerChart')
+    const deezer = await fetchDeezerChart(50)
+    if (deezer.tracks.length >= 16) {
+      const mapped: NormalizedTrack[] = deezer.tracks.slice(0, 50).map((t) => ({
+        id: t.id,
+        title: t.title,
+        artist: t.artist,
+        album: t.album,
+        artworkUrl: t.artworkUrl,
+        spotifyUrl: t.link,
+        previewUrl: t.preview,
+        durationMs: t.duration,
+        source: 'spotify' as const,
+        previewSource: (t.preview ? 'deezer' as unknown as NormalizedTrack['previewSource'] : undefined),
+        itunesUrl: t.link,
+      }))
+      const previewCount = mapped.filter((m) => m.previewUrl).length
+      const result: ChartResult = {
+        ok: true,
+        source: `${deezer.source} — Deezer editorial chart (ranking ${deezer.rawTotal} tracks; may be regional per Deezer terms; preview ${previewCount}/50)`,
+        tracks: mapped,
+        fetchedAt,
+      }
+      chartCache = { at: now, result }
+      return result
+    }
+    // If Deezer returned empty, record so diagnostics can report it (but fall through to iTunes)
+  } catch {}
+
+  // Attempt 3: iTunes RSS Top 50 — OFFICIAL verified chart fallback (no Spotify/Deezer permissions needed).
+  try {
+    const { fetchItunesTop50 } = await import('./itunesChart')
+    const itunes = await fetchItunesTop50()
+    if (itunes.tracks.length >= 16) {
+      // Map iTunes chart to NormalizedTrack shape (keep source itunes, attach spotifyUrl attempt via search)
+      const mapped: NormalizedTrack[] = itunes.tracks.slice(0, 50).map((t) => ({
+        id: t.id,
+        title: t.title,
+        artist: t.artist,
+        album: t.album,
+        artworkUrl: t.artworkUrl,
+        spotifyUrl: t.itunesUrl, // real chart link; Spotify link attempted via optional enrichment below
+        previewUrl: t.previewUrl,
+        durationMs: null,
+        source: 'spotify' as const,
+        previewSource: (t.previewUrl ? 'itunes' : undefined) as NormalizedTrack['previewSource'],
+        itunesUrl: t.itunesUrl,
+      }))
+      // Try to backfill Spotify track URL where possible (search by title+artist, keep iTunes if not found)
+      try {
+        for (let i = 0; i < Math.min(16, mapped.length); i++) {
+          const t = mapped[i]!
+          try {
+            const found = await searchTracks(`${t.title} ${t.artist.split(',')[0]!.trim()}`, 2)
+            if (found[0]?.spotifyUrl) {
+              t.spotifyUrl = found[0].spotifyUrl
+              if (!t.previewUrl && found[0].previewUrl) {
+                t.previewUrl = found[0].previewUrl
+                t.previewSource = 'spotify'
+              }
+            }
+          } catch {}
+        }
+      } catch {}
+      const result: ChartResult = {
+        ok: true,
+        source: itunes.source,
+        tracks: mapped,
+        fetchedAt,
+      }
+      chartCache = { at: now, result }
+      return result
+    }
+  } catch {}
+
+  // Attempt 3: fallback search (only if iTunes unavailable) — still not labelled as chart
   try {
     const queries = [
       'top hits global',
@@ -315,7 +393,7 @@ export async function getChartTracks(): Promise<ChartResult> {
       }))
       const result: ChartResult = {
         ok: true,
-        source: 'spotify:search (real Spotify tracks — Global Top 50 fallback via curated search; not official chart ranking) + itunes previews where available',
+        source: 'spotify:search (real Spotify tracks — NOT an official Global Top 50 chart; use only when Apple RSS unavailable)',
         tracks: withSource,
         fetchedAt,
       }
