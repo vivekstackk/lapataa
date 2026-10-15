@@ -35,7 +35,9 @@ function toAlbum(t: ChartTrack): Album {
     rating: '',
     image: t.artworkUrl ?? fallbackAlbums[0]?.image ?? '',
     tracks: t.album ? [t.album] : undefined,
-  }
+    // Preserve Spotify fields for audio/link — not in Album type, carry via index signature
+    ...({ spotifyUrl: t.spotifyUrl, previewUrl: t.previewUrl, durationMs: t.durationMs } as unknown as Partial<Album>),
+  } as Album
 }
 
 function chartWindows(all: Album[]): Album[][] {
@@ -83,7 +85,7 @@ export default function HomePage() {
 
   // Preview audio — single element, cleanup on change
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const [audioError, setAudioError] = useState<string | null>(null)
+  // Keep message removed from UI; log only for diagnosis
   const previewUrl = (activeAlbum as unknown as { previewUrl?: string | null })?.previewUrl ?? null
 
   useEffect(() => {
@@ -91,9 +93,8 @@ export default function HomePage() {
     if (!el) return
     el.pause()
     el.currentTime = 0
-    setAudioError(null)
     if (!previewUrl) {
-      setIsPlaying(false)
+      if (isPlaying) setIsPlaying(false)
       el.removeAttribute('src')
       el.load()
       return
@@ -113,9 +114,11 @@ export default function HomePage() {
         setIsPlaying(false)
         return
       }
-      // If src not yet loaded, let above effect handle play
       if (el.src && el.readyState >= 1) {
-        el.play().catch(() => setIsPlaying(false))
+        el.play().catch((err) => {
+          console.warn('preview play failed', err)
+          setIsPlaying(false)
+        })
       }
     } else {
       el.pause()
@@ -127,19 +130,24 @@ export default function HomePage() {
     if (!el) return
     const onEnded = () => {
       setIsPlaying(false)
-      // Auto-advance to next in chart order
       const idx = allChartAlbums.findIndex((a) => a.id === activeId)
       if (idx >= 0 && idx < allChartAlbums.length - 1) {
         setActiveId(allChartAlbums[idx + 1]!.id)
         setIsPlaying(true)
       }
     }
-    const onError = () => setAudioError('Preview unavailable')
+    const onError = () => {
+      console.warn('preview error', el.error)
+      setIsPlaying(false)
+    }
+    const onPlaying = () => setIsPlaying(true)
     el.addEventListener('ended', onEnded)
     el.addEventListener('error', onError)
+    el.addEventListener('playing', onPlaying)
     return () => {
       el.removeEventListener('ended', onEnded)
       el.removeEventListener('error', onError)
+      el.removeEventListener('playing', onPlaying)
     }
   }, [allChartAlbums, activeId])
 
@@ -331,13 +339,6 @@ export default function HomePage() {
       {/* Hidden preview audio element */}
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <audio ref={audioRef} preload="none" crossOrigin="anonymous" style={{ display: 'none' }} />
-      {previewUrl ? null : (
-        <span className="welcome-preview-hint" role="status" aria-live="polite">
-          Preview unavailable — <a href={spotifyHref} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>Listen on Spotify</a>
-          {audioError ? ` (${audioError})` : ''}
-        </span>
-      )}
-      {fetchedAt && <span className="welcome-fetched-hint">Updated {new Date(fetchedAt).toLocaleString()}</span>}
 
       {/* Album Dock with macOS magnification effect — 16 at a time */}
       <AlbumDock
@@ -352,7 +353,7 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="welcome-footer">
-        {fetchedAt ? `© 2026 Lapata · लापता · updated ${new Date(fetchedAt).toLocaleDateString()}` : '© 2026 Lapata · लापता'}
+        © 2026 Lapata · लापता
       </footer>
     </main>
   )

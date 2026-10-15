@@ -309,15 +309,13 @@ button {
   line-height: 1.4;
 }
 
-.welcome-preview-hint,
+/* Preview hint removed from main player — keep Spotify link via existing pill only */
 .welcome-fetched-hint {
   font-family: var(--sans);
   font-size: 11px;
   color: rgba(247, 240, 235, 0.68);
   margin-top: 6px;
 }
-
-.welcome-preview-hint a { color: #FFF9F5; }
 
 .welcome-artist {
   font-family: var(--sans);
