@@ -163,15 +163,23 @@ export default function HomePage() {
     }
     return windows[dockWindow] ?? windows[0] ?? allChartAlbums.slice(0, 16)
   })()
-  // When dock hasn't hydrated yet, show nothing in main player rather than mock
-  const effectiveAllChart = allChartAlbums
-  const activeAlbum = (effectiveAllChart.find((a) => a.id === activeId) ?? effectiveAllChart[0] ?? null) as Album | null
-  const activeIndex = Math.max(0, effectiveAllChart.findIndex((a) => a.id === activeId))
+  // Main player uses same 16 as dock when dock is locked — fixes mismatch
+  const effectiveChartForPlayer = dockLocked && dockLocked.tracks.length === 16 ? dockLocked.tracks : allChartAlbums
+  const activeAlbum = (effectiveChartForPlayer.find((a) => a.id === activeId) ?? dockAlbums[0] ?? effectiveChartForPlayer[0] ?? allChartAlbums[0] ?? null) as Album | null
+  const activeIndex = Math.max(0, effectiveChartForPlayer.findIndex((a) => a.id === activeId))
   const spotifyHref = (() => {
-    const t = effectiveAllChart.find((a) => a.id === activeId) as unknown as { spotifyUrl?: string; itunesUrl?: string } | null
+    const t = effectiveChartForPlayer.find((a) => a.id === activeId) as unknown as { spotifyUrl?: string; itunesUrl?: string } | null
     const url = t && ('spotifyUrl' in t || 'itunesUrl' in t) ? ((t as { spotifyUrl?: string }).spotifyUrl ?? (t as { itunesUrl?: string }).itunesUrl) : undefined
     return url || 'https://open.spotify.com'
   })()
+  // After dock hydration + chart load, ensure activeId is inside the visible 16 (from mock fallback -> real)
+  useEffect(() => {
+    if (!didHydratePersist || !dockAlbums.length) return
+    if (activeId && dockAlbums.some((a) => a.id === activeId)) return
+    if (!activeId || (activeId && isMockAlbum({ id: activeId } as Album))) {
+      setActiveId(dockAlbums[0]!.id)
+    }
+  }, [didHydratePersist, dockAlbums, activeId])
 
   // Preview audio — single element, cleanup on change
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -322,7 +330,6 @@ export default function HomePage() {
         }
         const mapped = data.tracks.map(toAlbum)
         if (mapped.some((a) => !a.id?.startsWith('itunes:') && /^\d+$/.test(a.id))) {
-          // Backend mistakenly returned mock-like ids — ignore; real chart must be itunes: prefix
           console.warn('[Lapata] ignoring chart response with mock ids')
           return
         }
@@ -335,10 +342,12 @@ export default function HomePage() {
           const migrated: DockPersist = { window: 0, selectedAt: Date.now(), tracks: firstReal }
           setDockLocked(migrated)
           writeDockPersist(migrated)
-        }
-        // If activeId is mock and not in new chart, switch to first real track without interrupting if already real
-        if (activeId && !mapped.some((a) => a.id === activeId) && isMockAlbum({ id: activeId } as Album)) {
-          setActiveId(mapped[0]!.id)
+          setActiveId(firstReal[0]!.id)
+        } else if (!isMockPersist({ window: 0, selectedAt: Date.now(), tracks: mapped.slice(0, 16) } as DockPersist)) {
+          // First load from fallbackAlbums (didHydratePersist false) — snap active to new dock if on mock
+          if (activeId && isMockAlbum({ id: activeId } as Album)) {
+            setActiveId(mapped[0]!.id)
+          }
         }
       } catch (e) {
         if (cancelled) return
