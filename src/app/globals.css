@@ -309,6 +309,16 @@ button {
   line-height: 1.4;
 }
 
+.welcome-preview-hint,
+.welcome-fetched-hint {
+  font-family: var(--sans);
+  font-size: 11px;
+  color: rgba(247, 240, 235, 0.68);
+  margin-top: 6px;
+}
+
+.welcome-preview-hint a { color: #FFF9F5; }
+
 .welcome-artist {
   font-family: var(--sans);
   font-size: 13px;
@@ -525,10 +535,20 @@ button {
   border-radius: 8px;
 }
 
-/* Tooltip — positioned above tallest magnified thumbnail + gap */
+/* Portal tooltip — fixed via JS, no clipping by ancestors */
+.album-dock-tooltip--portal {
+  position: fixed;
+  transform: none;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 9999;
+}
+
+/* Tooltip — positioned above tallest magnified thumbnail + gap (fallback for no-JS) */
 .album-dock-tooltip {
   position: absolute;
-  bottom: calc(100% + 56px);
+  bottom: calc(100% + 10px);
   left: 50%;
   transform: translateX(-50%) translateY(6px);
   background-color: #000000;

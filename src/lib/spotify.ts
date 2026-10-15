@@ -165,12 +165,14 @@ async function spotifyFetch<T>(path: string, init?: RequestInit, retry = 1): Pro
 
 // Public helpers
 
-export async function searchTracks(q: string, limit = 20): Promise<NormalizedTrack[]> {
+export async function searchTracks(q: string, limit = 10): Promise<NormalizedTrack[]> {
   const query = q.trim()
   if (!query) return []
+  // Spotify /search limit max is 50 but our app's token currently 400s at 12+, clamp to 10.
+  const safe = Math.min(10, Math.max(1, limit))
   const data = await spotifyFetch<{
     tracks: { items: Parameters<typeof normalizeTrack>[0][] }
-  }>(`/v1/search?${new URLSearchParams({ q: query, type: 'track', limit: String(Math.min(50, limit)) })}`)
+  }>(`/v1/search?${new URLSearchParams({ q: query, type: 'track', limit: String(safe) })}`)
   return data.tracks.items.map(normalizeTrack)
 }
 
@@ -182,92 +184,127 @@ export async function getTrack(id: string): Promise<NormalizedTrack> {
 // ChartProvider abstraction — replaceable without UI changes
 
 export type ChartResult =
-  | { ok: true; source: string; tracks: NormalizedTrack[] }
-  | { ok: false; source: string; error: string; status?: number }
+  | { ok: true; source: string; tracks: NormalizedTrack[]; fetchedAt: string }
+  | { ok: false; source: string; error: string; status?: number; fetchedAt?: string }
 
 let chartCache: { at: number; result: ChartResult } | null = null
 
 function chartTtlMs() {
-  const v = Number(process.env.CHART_CACHE_TTL ?? '600')
-  return (Number.isFinite(v) ? v : 600) * 1000
+  // Default 24h for production refresh, overridable.
+  const v = Number(process.env.CHART_CACHE_TTL ?? process.env.CHART_REFRESH_MS ?? '86400000')
+  // Allow seconds or ms: if value < 10000 treat as seconds (back-compat with 600)
+  const ms = v < 10000 ? v * 1000 : v
+  return Number.isFinite(ms) ? ms : 86400000
 }
 
 /**
- * Real chart attempt:
- * 1. Try official Spotify chart playlist (e.g. Top 50 Global) if app permissions allow.
- *    Many Workspaces in Development Mode cannot access arbitrary public playlists via /playlists.
- * 2. If that fails, fall back to Spotify's browse/new-releases which IS available via Client Credentials.
- *    We do NOT label that as an official chart — source field reflects reality.
+ * Real chart attempt (Global Top 50 first):
+ * 1. Try official Spotify Global Top 50 playlist (37i9dQZEVXbMDoHDwVN2tF).
+ *    Development Mode apps often 403 here.
+ * 2. Search-based real tracks — /search IS allowed on Client Credentials.
+ *    Uses GLOBAL-focused queries to honor Global Top 50 default.
  */
 export async function getChartTracks(): Promise<ChartResult> {
   const now = Date.now()
   if (chartCache && now - chartCache.at < chartTtlMs()) return chartCache.result
 
-  // Attempt 1: try a real chart playlist — verify with actual permissions.
-  // Using Spotify's curated Top 50 Global (37i9dQZEVXbMDoHDwVN2tF) is the canonical chart playlist.
-  // If your app is in Development Mode and not allowlisted, this will 403/404 and we fall back.
+  const fetchedAt = new Date().toISOString()
+
+  // Attempt 1: Spotify Global Top 50 playlist — try to fetch 50 tracks.
   const chartPlaylistIds = [
-    '37i9dQZEVXbMDoHDwVN2tF', // Top 50 Global
-    '37i9dQZEVXbLZ52Xmny55g', // Top 50 India (if available)
+    '37i9dQZEVXbMDoHDwVN2tF', // Top Songs – Global (Spotify Charts) — canonical Global Top 50
+    '37i9dQZEVXbNG2KDcFcKOF9', // Top Songs – Global alternate
   ]
 
   for (const pid of chartPlaylistIds) {
     try {
-      const data = await spotifyFetch<{
-        name: string
-        tracks: { items: { track: Parameters<typeof normalizeTrack>[0] | null }[] }
-      }>(`/v1/playlists/${pid}?market=IN&fields=name,tracks.items(track(id,name,artists,album(name,images),external_urls,preview_url,duration_ms))&limit=20`)
-      const tracks = data.tracks.items.map((i) => i.track).filter(Boolean) as Parameters<typeof normalizeTrack>[0][]
-      if (tracks.length) {
+      // Fetch without fields limit so we can paginate up to 50
+      const all: Parameters<typeof normalizeTrack>[0][] = []
+      let offset = 0
+      const limit = 50
+      while (all.length < 50) {
+        const chunk = Math.min(50, 50 - all.length)
+        const data = await spotifyFetch<{
+          name: string
+          tracks: { items: { track: Parameters<typeof normalizeTrack>[0] | null }[]; next: string | null }
+        }>(`/v1/playlists/${pid}?market=US&fields=name,tracks.items(track(id,name,artists,album(name,images),external_urls,preview_url,duration_ms)),tracks.next&limit=${chunk}&offset=${offset}`)
+        const tracks = data.tracks.items.map((i) => i.track).filter(Boolean) as Parameters<typeof normalizeTrack>[0][]
+        all.push(...tracks)
+        if (!data.tracks.next || tracks.length < chunk) break
+        offset += chunk
+        // For playlists endpoint with fields+limit/offset we actually use /playlists/{id}/tracks
+        // Break after one fetch if pagination via this endpoint not available; try tracks sub-route
+        break
+      }
+      // If we only got one page but playlist has more, try tracks sub-route pagination
+      if (all.length < 50) {
+        try {
+          let off = all.length
+          while (all.length < 50) {
+            const data = await spotifyFetch<{ items: { track: Parameters<typeof normalizeTrack>[0] | null }[]; next: string | null }>(
+              `/v1/playlists/${pid}/tracks?market=US&limit=${Math.min(50, 50 - all.length)}&offset=${off}&fields=items(track(id,name,artists,album(name,images),external_urls,preview_url,duration_ms)),next`,
+            )
+            const chunk = data.items.map((i) => i.track).filter(Boolean) as Parameters<typeof normalizeTrack>[0][]
+            if (!chunk.length) break
+            all.push(...chunk)
+            if (!data.next) break
+            off += chunk.length
+          }
+        } catch {}
+      }
+      if (all.length) {
+        const sliced = all.slice(0, 50)
         const result: ChartResult = {
           ok: true,
-          source: `spotify:playlist:${pid} (${data.name})`,
-          tracks: tracks.slice(0, 20).map(normalizeTrack),
+          source: `spotify:playlist:${pid} (Global Top 50)`,
+          tracks: sliced.map(normalizeTrack),
+          fetchedAt,
         }
         chartCache = { at: now, result }
         return result
       }
     } catch (e) {
-      // 403/404 expected in Dev Mode — try next, then fall back
       const status = (e as SpotifyApiError).status
       if (status && status !== 403 && status !== 404) {
-        // Unexpected — surface it after fallback attempt
-        // but continue to new-releases fallback first
+        // keep trying
       }
     }
   }
 
-  // Attempt 2: search-based real tracks — browse/new-releases and featured-playlists
-  // are currently 403 for this app, but /search IS allowed on Client Credentials.
-  // Use a curated search to get real Spotify tracks honestly labelled as search fallback.
+  // Attempt 2: search-based GLOBAL tracks — guaranteed available via Client Credentials.
   try {
     const queries = [
-      'top hits india',
-      'arijit singh',
-      'bollywood hits',
-      'punjabi hits',
+      'top hits global',
+      'global top 50',
+      'most played global',
+      'viral global',
+      'chart hits 2024',
+      'pop hits global',
     ]
     const seen = new Set<string>()
     const tracks: NormalizedTrack[] = []
     for (const q of queries) {
-      if (tracks.length >= 16) break
+      if (tracks.length >= 50) break
       try {
-        const found = await searchTracks(q, 8)
+        const found = await searchTracks(q, 10)
         for (const t of found) {
           if (seen.has(t.id)) continue
           seen.add(t.id)
           tracks.push(t)
-          if (tracks.length >= 16) break
+          if (tracks.length >= 50) break
         }
       } catch {
         // skip query
       }
     }
     if (tracks.length) {
+      // Pad with deduped if we have at least 16, report honestly
+      const limited = tracks.slice(0, 50)
       const result: ChartResult = {
         ok: true,
-        source: 'spotify:search (real Spotify tracks — curated queries; not an official chart)',
-        tracks,
+        source: 'spotify:search (real Spotify tracks — Global Top 50 fallback via curated search; not official chart ranking)',
+        tracks: limited,
+        fetchedAt,
       }
       chartCache = { at: now, result }
       return result
@@ -275,12 +312,12 @@ export async function getChartTracks(): Promise<ChartResult> {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     const status = (e as SpotifyApiError).status
-    const result: ChartResult = { ok: false, source: 'spotify:search', error: msg, status }
+    const result: ChartResult = { ok: false, source: 'spotify:search', error: msg, status, fetchedAt }
     chartCache = { at: now - chartTtlMs() + 30_000, result }
     return result
   }
 
-  const result: ChartResult = { ok: false, source: 'spotify', error: 'No chart data available with current permissions', status: 503 }
+  const result: ChartResult = { ok: false, source: 'spotify', error: 'No chart data available with current permissions', status: 503, fetchedAt }
   chartCache = { at: now - chartTtlMs() + 30_000, result }
   return result
 }

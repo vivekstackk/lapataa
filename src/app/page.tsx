@@ -38,25 +38,128 @@ function toAlbum(t: ChartTrack): Album {
   }
 }
 
+function chartWindows(all: Album[]): Album[][] {
+  const wins: Album[][] = []
+  if (all.length >= 50) {
+    wins.push(all.slice(0, 16))
+    wins.push(all.slice(16, 32))
+    wins.push(all.slice(32, 48))
+    wins.push(all.slice(34, 50))
+  } else if (all.length >= 32) {
+    wins.push(all.slice(0, 16))
+    wins.push(all.slice(16, 32))
+    wins.push(all.slice(0, 16))
+    wins.push(all.slice(16, 32))
+    // If 32-49 tracks, last window limited to available
+  } else {
+    // Fallback: chunk into 16s
+    for (let i = 0; i < all.length; i += 16) wins.push(all.slice(i, i + 16))
+    if (!wins.length) wins.push(all)
+  }
+  // Filter out empty windows
+  return wins.filter((w) => w.length > 0)
+}
+
 export default function HomePage() {
-  const [albums, setAlbums] = useState<Album[]>(fallbackAlbums)
+  const [allChartAlbums, setAllChartAlbums] = useState<Album[]>(fallbackAlbums)
   const [chartSource, setChartSource] = useState<string | null>(null)
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const [chartError, setChartError] = useState<string | null>(null)
   const [chartLoading, setChartLoading] = useState(true)
-  const [activeIndex, setActiveIndex] = useState(0)
+  const [dockWindow, setDockWindow] = useState(0)
+  const [activeId, setActiveId] = useState<string | null>(fallbackAlbums[0]?.id ?? null)
   const [isPlaying, setIsPlaying] = useState(false)
-  // Avoid stale closures on rapid refresh
-  const activeIdRef = useRef<string | null>(null)
-  const activeAlbum = albums[activeIndex] ?? null
+  // Derived: visible dock = window slice
+  const windows = chartWindows(allChartAlbums)
+  const dockAlbums = windows[dockWindow] ?? windows[0] ?? allChartAlbums.slice(0, 16)
+  // Active album resolved from allChartAlbums so playback persists across window rotation
+  const activeAlbum = (allChartAlbums.find((a) => a.id === activeId) ?? allChartAlbums[0] ?? fallbackAlbums[0]) as Album
+  const activeIndex = Math.max(0, allChartAlbums.findIndex((a) => a.id === activeId))
   const spotifyHref = (() => {
-    const t = albums[activeIndex] as unknown as { spotifyUrl?: string } | null
+    const t = allChartAlbums.find((a) => a.id === activeId) as unknown as { spotifyUrl?: string } | null
     const url = t && 'spotifyUrl' in t ? (t as { spotifyUrl?: string }).spotifyUrl : undefined
     return url || 'https://open.spotify.com'
   })()
 
+  // Preview audio — single element, cleanup on change
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [audioError, setAudioError] = useState<string | null>(null)
+  const previewUrl = (activeAlbum as unknown as { previewUrl?: string | null })?.previewUrl ?? null
+
+  useEffect(() => {
+    const el = audioRef.current
+    if (!el) return
+    el.pause()
+    el.currentTime = 0
+    setAudioError(null)
+    if (!previewUrl) {
+      setIsPlaying(false)
+      el.removeAttribute('src')
+      el.load()
+      return
+    }
+    el.src = previewUrl
+    el.load()
+    if (isPlaying) {
+      el.play().catch(() => setIsPlaying(false))
+    }
+  }, [previewUrl])
+
+  useEffect(() => {
+    const el = audioRef.current
+    if (!el) return
+    if (isPlaying) {
+      if (!previewUrl) {
+        setIsPlaying(false)
+        return
+      }
+      // If src not yet loaded, let above effect handle play
+      if (el.src && el.readyState >= 1) {
+        el.play().catch(() => setIsPlaying(false))
+      }
+    } else {
+      el.pause()
+    }
+  }, [isPlaying, previewUrl])
+
+  useEffect(() => {
+    const el = audioRef.current
+    if (!el) return
+    const onEnded = () => {
+      setIsPlaying(false)
+      // Auto-advance to next in chart order
+      const idx = allChartAlbums.findIndex((a) => a.id === activeId)
+      if (idx >= 0 && idx < allChartAlbums.length - 1) {
+        setActiveId(allChartAlbums[idx + 1]!.id)
+        setIsPlaying(true)
+      }
+    }
+    const onError = () => setAudioError('Preview unavailable')
+    el.addEventListener('ended', onEnded)
+    el.addEventListener('error', onError)
+    return () => {
+      el.removeEventListener('ended', onEnded)
+      el.removeEventListener('error', onError)
+    }
+  }, [allChartAlbums, activeId])
+
+  // Dock rotation — independent from chart refresh. 30s dev, 24h prod via NEXT_PUBLIC_DOCK_ROTATION_MS
+  useEffect(() => {
+    const raw = Number(process.env.NEXT_PUBLIC_DOCK_ROTATION_MS ?? '86400000')
+    const ms = Number.isFinite(raw) ? raw : 86400000
+    if (ms <= 0) return
+    const id = setInterval(() => {
+      setDockWindow((w) => (w + 1) % windows.length)
+    }, ms)
+    return () => clearInterval(id)
+    // Depend on windows.length so timer resets correctly when chart loads
+  }, [windows.length])
+
+  // Chart refresh — every CHART cache TTL, fetch anew and keep last valid on failure
   useEffect(() => {
     let cancelled = false
     const controller = new AbortController()
+    let timer: ReturnType<typeof setInterval> | null = null
     async function load() {
       try {
         setChartLoading(true)
@@ -67,23 +170,22 @@ export default function HomePage() {
           source?: string
           tracks?: ChartTrack[]
           error?: string
+          fetchedAt?: string
         }
         if (cancelled) return
         if (!res.ok || !data.ok || !data.tracks?.length) {
           setChartError(data.error ?? `Chart unavailable (${res.status})`)
           setChartSource(data.source ?? null)
+          if (data.fetchedAt) setFetchedAt(data.fetchedAt)
+          // Preserve last valid — do not clear allChartAlbums
           return
         }
         const mapped = data.tracks.map(toAlbum)
-        // Preserve active selection by id when possible
-        const prevId = albums[activeIndex]?.id ?? activeIdRef.current
-        setAlbums(mapped)
+        setAllChartAlbums(mapped)
         setChartSource(data.source ?? null)
-        if (prevId) {
-          const idx = mapped.findIndex((a) => a.id === prevId)
-          if (idx >= 0) setActiveIndex(idx)
-          else setActiveIndex((i) => Math.min(i, mapped.length - 1))
-        }
+        if (data.fetchedAt) setFetchedAt(data.fetchedAt)
+        // Preserve activeId if still in new chart
+        // Don't change activeId here unless it vanished
       } catch (e) {
         if (cancelled) return
         if ((e as Error).name === 'AbortError') return
@@ -93,17 +195,20 @@ export default function HomePage() {
       }
     }
     load()
+    // Periodic refresh at chart TTL
+    const ttlRaw = Number(process.env.NEXT_PUBLIC_DOCK_ROTATION_MS ?? '86400000')
+    // Use server default for chart refresh — re-fetch at DOCK_ROTATION_MS cadence is okay for demo,
+    // but chart refresh uses CHART_CACHE_TTL on server (24h). Client just polls chart endpoint.
+    const chartPollMs = 86400000
+    timer = setInterval(() => {
+      if (!cancelled) load()
+    }, chartPollMs)
     return () => {
       cancelled = true
       controller.abort()
+      if (timer) clearInterval(timer)
     }
-    // Load once on mount — do not depend on albums/activeIndex to avoid loops
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  useEffect(() => {
-    activeIdRef.current = albums[activeIndex]?.id ?? null
-  }, [albums, activeIndex])
 
   return (
     <main className="welcome">
@@ -194,7 +299,9 @@ export default function HomePage() {
                 aria-label="Previous track"
                 type="button"
               onClick={() => {
-                setActiveIndex((p) => (p - 1 + albums.length) % albums.length)
+                const idx = allChartAlbums.findIndex((a) => a.id === activeId)
+                const prev = idx <= 0 ? allChartAlbums.length - 1 : idx - 1
+                setActiveId(allChartAlbums[prev]!.id)
                 setIsPlaying(true)
               }}
               />
@@ -210,7 +317,9 @@ export default function HomePage() {
                 aria-label="Next track"
                 type="button"
               onClick={() => {
-                setActiveIndex((p) => (p + 1) % albums.length)
+                const idx = allChartAlbums.findIndex((a) => a.id === activeId)
+                const next = (idx + 1) % allChartAlbums.length
+                setActiveId(allChartAlbums[next]!.id)
                 setIsPlaying(true)
               }}
               />
@@ -219,16 +328,31 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Album Dock with macOS magnification effect */}
+      {/* Hidden preview audio element */}
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <audio ref={audioRef} preload="none" crossOrigin="anonymous" style={{ display: 'none' }} />
+      {previewUrl ? null : (
+        <span className="welcome-preview-hint" role="status" aria-live="polite">
+          Preview unavailable — <a href={spotifyHref} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>Listen on Spotify</a>
+          {audioError ? ` (${audioError})` : ''}
+        </span>
+      )}
+      {fetchedAt && <span className="welcome-fetched-hint">Updated {new Date(fetchedAt).toLocaleString()}</span>}
+
+      {/* Album Dock with macOS magnification effect — 16 at a time */}
       <AlbumDock
-        albums={albums}
-        activeIndex={activeIndex}
-        onSelect={setActiveIndex}
+        albums={dockAlbums}
+        activeIndex={Math.max(0, dockAlbums.findIndex((a) => a.id === activeId))}
+        activeId={activeId}
+        onSelect={(i) => {
+          const id = dockAlbums[i]?.id
+          if (id) setActiveId(id)
+        }}
       />
 
       {/* Footer */}
       <footer className="welcome-footer">
-        © 2026 Lapata · लापता
+        {fetchedAt ? `© 2026 Lapata · लापता · updated ${new Date(fetchedAt).toLocaleDateString()}` : '© 2026 Lapata · लापता'}
       </footer>
     </main>
   )
