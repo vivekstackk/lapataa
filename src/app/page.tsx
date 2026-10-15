@@ -62,18 +62,71 @@ function chartWindows(all: Album[]): Album[][] {
   return wins.filter((w) => w.length > 0)
 }
 
+const DOCK_MS = 86400000
+const DOCK_KEY = 'lapata:dockLocked:v2'
+type DockPersist = { window: number; selectedAt: number; tracks: Album[] }
+
+function readDockPersist(): DockPersist | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(DOCK_KEY)
+    if (!raw) {
+      // Migrate from old key if present
+      const legacy = localStorage.getItem('lapata:dockLocked')
+      if (legacy) {
+        try {
+          const ld = JSON.parse(legacy) as { window: number; selectedAt: number }
+          if (typeof ld.window === 'number' && typeof ld.selectedAt === 'number') {
+            return { window: ld.window, selectedAt: ld.selectedAt, tracks: [] as Album[] }
+          }
+        } catch {}
+      }
+      return null
+    }
+    const d = JSON.parse(raw) as DockPersist
+    if (typeof d.window !== 'number' || typeof d.selectedAt !== 'number' || !Array.isArray(d.tracks)) return null
+    return d
+  } catch {
+    return null
+  }
+}
+
+function writeDockPersist(p: DockPersist) {
+  try {
+    localStorage.setItem(DOCK_KEY, JSON.stringify(p))
+    // Clean legacy
+    localStorage.removeItem('lapata:dockLocked')
+    localStorage.removeItem('lapata:dockWindow')
+  } catch {}
+}
+
 export default function HomePage() {
   const [allChartAlbums, setAllChartAlbums] = useState<Album[]>(fallbackAlbums)
   const [chartSource, setChartSource] = useState<string | null>(null)
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const [chartError, setChartError] = useState<string | null>(null)
   const [chartLoading, setChartLoading] = useState(true)
-  const [dockWindow, setDockWindow] = useState(0)
   const [activeId, setActiveId] = useState<string | null>(fallbackAlbums[0]?.id ?? null)
   const [isPlaying, setIsPlaying] = useState(false)
-  // Derived: visible dock = window slice
+  // 24h-locked dock state
+  const [dockLocked, setDockLocked] = useState<DockPersist | null>(() => {
+    const p = readDockPersist()
+    if (!p) return null
+    const elapsed = Date.now() - p.selectedAt
+    if (elapsed < 0 || elapsed >= DOCK_MS) return null
+    if (!p.tracks.length) return null
+    return p
+  })
   const windows = chartWindows(allChartAlbums)
-  const dockAlbums = windows[dockWindow] ?? windows[0] ?? allChartAlbums.slice(0, 16)
+  const dockWindow = dockLocked?.window ?? 0
+  // Locked 16-track selection — stable for 24h, chart refresh does NOT replace it
+  const dockAlbums = (() => {
+    if (dockLocked && dockLocked.tracks.length === 16) {
+      const elapsed = Date.now() - dockLocked.selectedAt
+      if (elapsed >= 0 && elapsed < DOCK_MS) return dockLocked.tracks
+    }
+    return windows[dockWindow] ?? windows[0] ?? allChartAlbums.slice(0, 16)
+  })()
   // Active album resolved from allChartAlbums so playback persists across window rotation
   const activeAlbum = (allChartAlbums.find((a) => a.id === activeId) ?? allChartAlbums[0] ?? fallbackAlbums[0]) as Album
   const activeIndex = Math.max(0, allChartAlbums.findIndex((a) => a.id === activeId))
@@ -151,17 +204,33 @@ export default function HomePage() {
     }
   }, [allChartAlbums, activeId])
 
-  // Dock rotation — independent from chart refresh. 30s dev, 24h prod via NEXT_PUBLIC_DOCK_ROTATION_MS
+  // Initialize or restore 24h-locked dock: on mount, either keep locked tracks or lock current window
   useEffect(() => {
-    const raw = Number(process.env.NEXT_PUBLIC_DOCK_ROTATION_MS ?? '86400000')
-    const ms = Number.isFinite(raw) ? raw : 86400000
-    if (ms <= 0) return
-    const id = setInterval(() => {
-      setDockWindow((w) => (w + 1) % windows.length)
-    }, ms)
-    return () => clearInterval(id)
-    // Depend on windows.length so timer resets correctly when chart loads
-  }, [windows.length])
+    if (!windows.length) return
+    if (dockLocked) return // already locked, 24h timer below handles rotation
+    const nextTracks = windows[0] ?? allChartAlbums.slice(0, 16)
+    if (!nextTracks.length) return
+    const locked: DockPersist = { window: 0, selectedAt: Date.now(), tracks: nextTracks }
+    setDockLocked(locked)
+    writeDockPersist(locked)
+  }, [windows.length, dockLocked, allChartAlbums])
+
+  // 24h rotation — single setTimeout locked to selectedAt, recreates from next window on expiry
+  useEffect(() => {
+    if (!dockLocked) return
+    if (!windows.length) return
+    const elapsed = Date.now() - dockLocked.selectedAt
+    const delay = Math.max(0, DOCK_MS - elapsed)
+    const timeout = setTimeout(() => {
+      const nextWindow = (dockLocked.window + 1) % windows.length
+      const nextTracks = windows[nextWindow] ?? allChartAlbums.slice(0, 16)
+      const locked: DockPersist = { window: nextWindow, selectedAt: Date.now(), tracks: nextTracks }
+      setDockLocked(locked)
+      writeDockPersist(locked)
+      // No extra reschedule needed — effect re-runs on dockLocked change
+    }, delay)
+    return () => clearTimeout(timeout)
+  }, [dockLocked, windows, allChartAlbums])
 
   // Chart refresh — every CHART cache TTL, fetch anew and keep last valid on failure
   useEffect(() => {
