@@ -2,6 +2,7 @@
  * https://developer.spotify.com/documentation/web-api/tutorials/client-credentials-flow
  * Server-only. Never called from browser. Secrets stay in process.env.
  ****************************************************************************/
+import { enrichWithItunesPreviews } from './itunesPreview'
 
 type TokenCache = {
   token: string
@@ -93,6 +94,8 @@ export type NormalizedTrack = {
   previewUrl: string | null
   durationMs: number | null
   source: 'spotify'
+  previewSource?: 'spotify' | 'itunes'
+  itunesUrl?: string
 }
 
 function pickArtwork(images: { url: string; width?: number }[] | undefined): string | null {
@@ -253,11 +256,13 @@ export async function getChartTracks(): Promise<ChartResult> {
         } catch {}
       }
       if (all.length) {
-        const sliced = all.slice(0, 50)
+        const sliced = all.slice(0, 50).map(normalizeTrack)
+        const enriched = await enrichWithItunesPreviews(sliced.map((t: NormalizedTrack) => ({ ...t, previewSource: (t.previewUrl ? 'spotify' : undefined) as NormalizedTrack['previewSource'] })))
+        const withSource = enriched.map((t: NormalizedTrack) => ({ ...t, previewSource: (t.previewUrl ? (t.previewSource ?? 'itunes') : undefined) as NormalizedTrack['previewSource'] }))
         const result: ChartResult = {
           ok: true,
           source: `spotify:playlist:${pid} (Global Top 50)`,
-          tracks: sliced.map(normalizeTrack),
+          tracks: withSource,
           fetchedAt,
         }
         chartCache = { at: now, result }
@@ -298,12 +303,20 @@ export async function getChartTracks(): Promise<ChartResult> {
       }
     }
     if (tracks.length) {
-      // Pad with deduped if we have at least 16, report honestly
       const limited = tracks.slice(0, 50)
+      // Enrich with iTunes previews where Spotify preview_url is null — keep chart independent from audio
+      const enriched = await enrichWithItunesPreviews(
+        limited.map((t: NormalizedTrack) => ({ ...t, previewSource: (t.previewUrl ? 'spotify' : undefined) as NormalizedTrack['previewSource'] })),
+      )
+      // Mark source for enriched
+      const withSource = enriched.map((t: NormalizedTrack) => ({
+        ...t,
+        previewSource: (t.previewUrl ? (t.previewSource ?? 'itunes') : undefined) as NormalizedTrack['previewSource'],
+      }))
       const result: ChartResult = {
         ok: true,
-        source: 'spotify:search (real Spotify tracks — Global Top 50 fallback via curated search; not official chart ranking)',
-        tracks: limited,
+        source: 'spotify:search (real Spotify tracks — Global Top 50 fallback via curated search; not official chart ranking) + itunes previews where available',
+        tracks: withSource,
         fetchedAt,
       }
       chartCache = { at: now, result }
