@@ -63,7 +63,7 @@ function chartWindows(all: Album[]): Album[][] {
 }
 
 const DOCK_MS = 86400000
-const DOCK_KEY = 'lapata:dockLocked:v3'
+const DOCK_KEY = 'lapata:dockLocked:v4'
 type DockPersist = { window: number; selectedAt: number; tracks: Album[] }
 
 function isMockAlbum(a: Album): boolean {
@@ -102,7 +102,7 @@ function readDockPersist(): DockPersist | null {
       return d
     }
     // Migrate from older keys — but reject mock data
-    for (const legacyKey of ['lapata:dockLocked:v2', 'lapata:dockLocked', 'lapata:dockWindow']) {
+    for (const legacyKey of ['lapata:dockLocked:v3', 'lapata:dockLocked:v2', 'lapata:dockLocked', 'lapata:dockWindow']) {
       const legacy = localStorage.getItem(legacyKey)
       if (!legacy) continue
       try {
@@ -125,7 +125,7 @@ function writeDockPersist(p: DockPersist) {
     localStorage.setItem(DOCK_KEY, JSON.stringify(p))
     // Clean legacy keys
     localStorage.removeItem('lapata:dockLocked')
-    localStorage.removeItem('lapata:dockLocked:v2')
+    localStorage.removeItem('lapata:dockLocked:v3')
     localStorage.removeItem('lapata:dockWindow')
   } catch {}
 }

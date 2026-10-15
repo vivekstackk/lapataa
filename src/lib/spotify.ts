@@ -191,6 +191,7 @@ export type ChartResult =
   | { ok: false; source: string; error: string; status?: number; fetchedAt?: string }
 
 let chartCache: { at: number; result: ChartResult } | null = null
+let chartVersion = 2 // bump to invalidate server cache from bad BAD TIMES dup build
 
 function chartTtlMs() {
   // Default 24h for production refresh, overridable.
@@ -209,7 +210,8 @@ function chartTtlMs() {
  */
 export async function getChartTracks(): Promise<ChartResult> {
   const now = Date.now()
-  if (chartCache && now - chartCache.at < chartTtlMs()) return chartCache.result
+  if (chartCache && chartVersion === 2 && now - chartCache.at < chartTtlMs()) return chartCache.result
+  if (chartVersion !== 2) { chartCache = null; chartVersion = 2 }
 
   const fetchedAt = new Date().toISOString()
 
