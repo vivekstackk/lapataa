@@ -63,7 +63,7 @@ function chartWindows(all: Album[]): Album[][] {
 }
 
 const DOCK_MS = 86400000
-const DOCK_KEY = 'lapata:dockLocked:v4'
+const DOCK_KEY = 'lapata:dockLocked:v5'
 type DockPersist = { window: number; selectedAt: number; tracks: Album[] }
 
 function isMockAlbum(a: Album): boolean {
@@ -102,7 +102,7 @@ function readDockPersist(): DockPersist | null {
       return d
     }
     // Migrate from older keys — but reject mock data
-    for (const legacyKey of ['lapata:dockLocked:v3', 'lapata:dockLocked:v2', 'lapata:dockLocked', 'lapata:dockWindow']) {
+    for (const legacyKey of ['lapata:dockLocked:v4', 'lapata:dockLocked:v3', 'lapata:dockLocked:v2', 'lapata:dockLocked', 'lapata:dockWindow']) {
       const legacy = localStorage.getItem(legacyKey)
       if (!legacy) continue
       try {
@@ -125,7 +125,7 @@ function writeDockPersist(p: DockPersist) {
     localStorage.setItem(DOCK_KEY, JSON.stringify(p))
     // Clean legacy keys
     localStorage.removeItem('lapata:dockLocked')
-    localStorage.removeItem('lapata:dockLocked:v3')
+    localStorage.removeItem('lapata:dockLocked:v4')
     localStorage.removeItem('lapata:dockWindow')
   } catch {}
 }
@@ -172,18 +172,25 @@ export default function HomePage() {
     const url = t && ('spotifyUrl' in t || 'itunesUrl' in t) ? ((t as { spotifyUrl?: string }).spotifyUrl ?? (t as { itunesUrl?: string }).itunesUrl) : undefined
     return url || 'https://open.spotify.com'
   })()
-  // One-time: if locked dock has duplicate artwork (e.g. BAD TIMES twice), reset to fresh 16
+  // One-time: if locked dock has dup artwork/title (e.g. BAD TIMES twice), clear ALL legacy keys and reset
   useEffect(() => {
-    if (!dockLocked || !didHydratePersist || !isRealChart(allChartAlbums)) return
+    if (!dockLocked || !didHydratePersist) return
     const seenArt = new Set<string>()
+    const seenTitle = new Set<string>()
     let hasDup = false
     for (const t of dockLocked.tracks) {
       const k = t.image?.replace(/\/\d+x\d+bb\.(png|jpg)$/, '').toLowerCase() ?? t.title.toLowerCase()
-      if (seenArt.has(k)) { hasDup = true; break }
+      const tk = t.title.toLowerCase().trim()
+      if (seenArt.has(k) || seenTitle.has(tk)) { hasDup = true; break }
       seenArt.add(k)
+      seenTitle.add(tk)
     }
     if (hasDup) {
-      try { localStorage.removeItem(DOCK_KEY) } catch {}
+      try {
+        for (const k of ['lapata:dockLocked', 'lapata:dockLocked:v2', 'lapata:dockLocked:v3', 'lapata:dockLocked:v4', 'lapata:dockLocked:v5']) localStorage.removeItem(k)
+        localStorage.removeItem('lapata:dockWindow')
+      } catch {}
+      if (!isRealChart(allChartAlbums) || !windows[0]?.length) return
       const fresh = windows[0] ?? allChartAlbums.slice(0, 16)
       const locked: DockPersist = { window: 0, selectedAt: Date.now(), tracks: fresh }
       setDockLocked(locked)
